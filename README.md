@@ -35,9 +35,18 @@ Frontend assets:
 - `static/styles.css`
 - `static/matrix_styles.css`
 
+SQL assets:
+- `sql/Movie_Content_Reco_GMN_PL1_SQL_Setup.sql`: base SQL preparation script
+- `sql/Movie_Content_Reco_GMN_PL4_SQL_Testing_Queries.sql`: SQL testing and inspection queries
+- `sql/Movie_Content_Reco_GMN_PL5_A_SQL_Model_Comparison.sql`: comparison queries for movie and user model outputs
+- `sql/Movie_Content_Reco_GMN_PL5_B_SQL_Model_Validation.sql`: validation queries for comparison tables
+- `sql/Movie_Content_Reco_GMN_PL8_SQL_Final_Output_Queries.sql`: final project output queries
+
 Support files:
 - `requirements.txt`
 - `.gitignore`
+- `PIPELINE.md`
+- `REPORT_DRAFT.md`
 
 ## Naming Convention
 
@@ -46,6 +55,10 @@ Project script naming follows the pipeline stage:
 - `PL4`: user recommendation build
 - `PL6`: router layer
 - `PL7`: evaluation
+
+SQL naming:
+- SQL files follow the same `Movie_Content_Reco_GMN_...` naming pattern as the Python pipeline
+- the `SQL_...` suffix clarifies that these are database support files rather than Python pipeline stages
 
 Suffixes:
 - no suffix: TF-IDF path
