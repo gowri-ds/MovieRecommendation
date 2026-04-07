@@ -187,6 +187,33 @@ The confidence router uses normalized per-user model scores before calculating f
 
 If both models recommend the same movie, the router also adds a small agreement bonus of `0.08`.
 
+## UI Explorer
+
+This repository also includes a lightweight Flask web app in `app.py`.
+
+What the UI does:
+- accepts a `userID`
+- lets you switch between `TF-IDF`, `Genre OHE`, `Hybrid Router`, and `Confidence Router`
+- reads recommendation rows directly from the SQLite database
+- joins movie metadata from `movie_content_clean`
+- displays IMDb, TMDb, and MovieLens links
+- attempts to scrape poster images from the stored TMDb or IMDb page URLs
+
+How to run it:
+
+1. Install dependencies:
+   `py -m pip install -r requirements.txt`
+
+2. Start the app:
+   `py app.py`
+
+3. Open the local URL shown in the terminal, usually:
+   `http://127.0.0.1:5000`
+
+Notes:
+- poster images are fetched at request time from the stored page URLs, so image loading may be slower than the rest of the table
+- if a page blocks scraping or does not expose an image in its meta tags, the UI shows `No image`
+
 ## Limitations
 
 This model relies on TF-IDF features built from `combined_text`, so it can over-weight repeated keywords, names, or metadata tokens instead of deeper semantic meaning. One example is `Jumanji (1995)` matching with `Robin Williams: Live on Broadway (2002)`, which suggests actor-name overlap influenced the result.
