@@ -1,9 +1,10 @@
 # GMN Content Recommendation Pipeline
 
-This repository contains four Python scripts that build two parallel content-based movie recommendation workflows on top of a SQLite database:
+This repository contains five Python scripts that build three related recommendation workflows on top of a SQLite database:
 
 - a TF-IDF text-based pipeline
 - a genre one-hot encoding (OHE) pipeline
+- a hybrid router that blends both user-level models
 
 ## Files
 
@@ -18,6 +19,9 @@ This repository contains four Python scripts that build two parallel content-bas
 
 - `Movie_Content_Reco_GMN_PL4B_Genre_OHE.py`
   Builds user-level recommendations from the genre OHE similarity table and writes the top 20 recommendations per user to a separate SQLite table.
+
+- `Movie_Content_Reco_GMN_PL6_A_HybridRouter.py`
+  Builds hybrid user-level recommendations by blending normalized TF-IDF and genre OHE recommendation scores, adding a small overlap bonus when both models recommend the same movie, and writing the final ranked output to SQLite.
 
 ## Database
 
@@ -85,6 +89,25 @@ Columns:
 - `support_movie_ids`
 - `support_movie_titles`
 
+### Hybrid table
+
+#### `user_hybrid_recommendations_top20`
+
+Stores the top 20 hybrid recommendations per user after combining the TF-IDF and genre OHE user-level outputs.
+
+Columns:
+- `userID`
+- `recommended_movieID`
+- `recommended_title`
+- `tfidf_score`
+- `ohe_score`
+- `tfidf_score_norm`
+- `ohe_score_norm`
+- `recommended_by_both`
+- `final_score`
+- `model_source`
+- `final_rank`
+
 ## Execution Summary
 
 The scripts were run successfully on April 6, 2026.
@@ -108,10 +131,12 @@ The TF-IDF pipeline uses `combined_text` and captures richer textual similarity 
 
 The genre OHE pipeline is intentionally simpler. It compares movies only on genre membership, which makes the model easier to explain but also less granular. Movies with identical genre combinations can receive identical similarity scores, often `1.0`.
 
+The hybrid router combines both user-level models after normalizing each model's score range per user. This makes the blend more stable, because the raw TF-IDF and OHE recommendation scores are not naturally on the same numeric scale.
+
 ## Limitations
 
 This model relies on TF-IDF features built from `combined_text`, so it can over-weight repeated keywords, names, or metadata tokens instead of deeper semantic meaning. One example is `Jumanji (1995)` matching with `Robin Williams: Live on Broadway (2002)`, which suggests actor-name overlap influenced the result.
 
 The recommendation logic also treats ratings greater than or equal to `4.0` as a binary "liked" signal. That simplifies user preferences and can exclude users with weaker or sparse positive feedback. In this build, `610` users appeared in the interaction data, but only `609` received recommendations because one user had no ratings at or above the threshold.
 
-Finally, both workflows are content-based only. They do not use collaborative filtering, so they may miss useful patterns from similar-user behavior. The current validation confirms structural correctness and plausible examples, but it does not yet measure predictive accuracy with metrics such as precision, recall, or hit rate.
+Finally, all three workflows are content-based only. They do not use collaborative filtering, so they may miss useful patterns from similar-user behavior. The current validation confirms structural correctness and plausible examples, but it does not yet measure predictive accuracy with metrics such as precision, recall, or hit rate.
