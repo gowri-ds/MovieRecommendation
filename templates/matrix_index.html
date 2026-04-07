@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Matrix Matchmakers Content Based Reco</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='matrix_styles.css') }}">
+</head>
+<body>
+    <main class="page-shell">
+        <section class="hero">
+            <div class="hero-copy">
+                <p class="matrix-kicker">Matrix Matchmakers</p>
+                <h1>Content Based Reco</h1>
+                <p class="hero-subtitle">Trace recommendation paths across models, routers, and similarity signals.</p>
+            </div>
+            <div class="hero-card">
+                <p class="hero-label">SQLite Source</p>
+                <p class="hero-value">{{ db_path }}</p>
+            </div>
+        </section>
+
+        <section class="panel controls">
+            <form method="post" class="mode-form">
+                <input type="hidden" name="user_id" value="{{ user_id }}">
+                <input type="hidden" name="top_n" value="{{ top_n }}">
+                <input type="hidden" name="model" value="{{ selected_model }}">
+                <input type="hidden" name="movie_id" value="{{ movie_id }}">
+                <input type="hidden" name="similarity_top_n" value="{{ similarity_top_n }}">
+                <input type="hidden" name="similarity_model" value="{{ selected_similarity }}">
+                <p class="section-label">Choose a Workflow</p>
+                <div class="mode-buttons">
+                    <button type="submit" name="mode" value="similarity" class="mode-button {% if selected_mode == 'similarity' %}is-active{% endif %}">
+                        Movie Similarity
+                    </button>
+                    <button type="submit" name="mode" value="recommendation" class="mode-button {% if selected_mode == 'recommendation' %}is-active{% endif %}">
+                        User Recommendation
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        {% if selected_mode == "recommendation" %}
+        <section class="panel controls">
+            <form method="post" class="query-form">
+                <input type="hidden" name="active_form" value="recommendation_form">
+                <input type="hidden" name="mode" value="recommendation">
+                <label>
+                    <span>User ID</span>
+                    <input type="number" name="user_id" value="{{ user_id }}" placeholder="e.g. 1" required>
+                </label>
+
+                <label>
+                    <span>Top N</span>
+                    <input type="number" name="top_n" value="{{ top_n }}" min="1" max="50" required>
+                </label>
+
+                <div class="selection-groups">
+                    {% for group in model_groups %}
+                    <div class="selection-group">
+                        <p class="section-label">{{ group["label"] }}</p>
+                        <div class="model-buttons">
+                            {% for key in group["keys"] %}
+                            <button
+                                type="submit"
+                                name="model"
+                                value="{{ key }}"
+                                class="model-button {% if selected_model == key %}is-active{% endif %} {% if group['label'] == 'Routers' %}is-router{% endif %}"
+                            >
+                                {{ model_configs[key].label }}
+                            </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </form>
+        </section>
+        {% endif %}
+
+        {% if selected_mode == "similarity" %}
+        <section class="panel controls">
+            <div class="similarity-layout">
+                <form method="post" class="query-form similarity-form">
+                    <input type="hidden" name="active_form" value="similarity_form">
+                    <input type="hidden" name="mode" value="similarity">
+                    <label>
+                        <span>Movie ID</span>
+                        <input id="similarityMovieIdInput" type="number" name="movie_id" value="{{ movie_id }}" placeholder="e.g. 1" required>
+                    </label>
+
+                    <label>
+                        <span>Top N</span>
+                        <input type="number" name="similarity_top_n" value="{{ similarity_top_n }}" min="1" max="50" required>
+                    </label>
+
+                    <div class="selection-groups">
+                        <div class="selection-group">
+                            <p class="section-label">Model</p>
+                            <div class="model-buttons">
+                                {% for key, config in similarity_configs.items() %}
+                                <button
+                                    type="submit"
+                                    name="similarity_model"
+                                    value="{{ key }}"
+                                    class="model-button {% if selected_similarity == key %}is-active{% endif %}"
+                                >
+                                    {{ config.label }}
+                                </button>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if movie_summary %}
+                    <div class="similarity-summary">
+                        Showing similar movies for <strong>{{ movie_summary.movie_title }}</strong>
+                        (Movie ID <strong>{{ movie_summary.movie_id }}</strong>), released in
+                        <strong>{{ movie_summary.release_year }}</strong>, in the genre
+                        <strong>{{ movie_summary.genere }}</strong>.
+                        {% if selected_similarity == "tfidf_similarity" %}
+                        Model 1: <strong>TF-IDF</strong>.
+                        {% elif selected_similarity == "genre_ohe_similarity" %}
+                        Model 2: <strong>Genre OHE</strong>.
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </form>
+
+                <aside class="movie-lookup">
+                    <p class="section-label">Movie Name Finder</p>
+                    <input id="movieLookupInput" type="text" class="lookup-input" placeholder="Search movie title...">
+                    <div class="movie-lookup-list" id="movieLookupList">
+                        {% for option in movie_options %}
+                        <button
+                            type="button"
+                            class="movie-lookup-item"
+                            data-movie-label="{{ option.label|lower }}"
+                            data-movie-id="{{ option.movieID }}"
+                        >
+                            <span class="movie-lookup-id">{{ option.movieID }}</span>
+                            <span class="movie-lookup-title">{{ option.label }}</span>
+                        </button>
+                        {% endfor %}
+                    </div>
+                </aside>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if selected_mode == "recommendation" and error_message %}
+        <section class="panel message-panel">
+            <p class="message">{{ error_message }}</p>
+        </section>
+        {% endif %}
+
+        {% if selected_mode == "similarity" and similarity_error_message %}
+        <section class="panel message-panel">
+            <p class="message">{{ similarity_error_message }}</p>
+        </section>
+        {% endif %}
+
+        {% if selected_mode == "recommendation" %}
+        <section class="panel results-panel">
+            <div class="results-header">
+                <h2>{{ model_configs[selected_model].label }} Results</h2>
+                <p>Returned rows: {{ results|length }}</p>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            {% for col in table_columns %}
+                            <th>{{ col.replace("_", " ").title() }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if results %}
+                            {% for row in results %}
+                            <tr>
+                                {% for col in table_columns %}
+                                <td>
+                                    {% if col == "poster" %}
+                                        {% if row.imdb_url %}
+                                            <a href="{{ row.imdb_url }}" target="_blank" rel="noopener noreferrer">
+                                                {% if row.poster %}
+                                                <img src="{{ row.poster }}" alt="{{ row.recommended_title }} poster" class="poster">
+                                                {% else %}
+                                                <div class="poster placeholder">IMDb</div>
+                                                {% endif %}
+                                            </a>
+                                        {% elif row.poster %}
+                                            <img src="{{ row.poster }}" alt="{{ row.recommended_title }} poster" class="poster">
+                                        {% else %}
+                                        <div class="poster placeholder">No image</div>
+                                        {% endif %}
+                                    {% else %}
+                                        {{ row[col] }}
+                                    {% endif %}
+                                </td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="{{ table_columns|length }}" class="empty-state">
+                                    Query the grid to surface recommendation matches.
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if selected_mode == "similarity" %}
+        <section class="panel results-panel">
+            <div class="results-header">
+                <h2>
+                    {% if selected_similarity and selected_similarity in similarity_configs %}
+                        {{ similarity_configs[selected_similarity].label }} Similarity Results
+                    {% else %}
+                        Movie Similarity Results
+                    {% endif %}
+                </h2>
+                <p>Returned rows: {{ similarity_results|length }}</p>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            {% for col in similarity_table_columns %}
+                            <th>{{ col.replace("_", " ").title() }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if similarity_results %}
+                            {% for row in similarity_results %}
+                            <tr>
+                                {% for col in similarity_table_columns %}
+                                <td>
+                                    {% if col == "poster" %}
+                                        {% if row.imdb_url %}
+                                            <a href="{{ row.imdb_url }}" target="_blank" rel="noopener noreferrer">
+                                                {% if row.poster %}
+                                                <img src="{{ row.poster }}" alt="{{ row.recommended_title }} poster" class="poster">
+                                                {% else %}
+                                                <div class="poster placeholder">IMDb</div>
+                                                {% endif %}
+                                            </a>
+                                        {% elif row.poster %}
+                                            <img src="{{ row.poster }}" alt="{{ row.recommended_title }} poster" class="poster">
+                                        {% else %}
+                                        <div class="poster placeholder">No image</div>
+                                        {% endif %}
+                                    {% else %}
+                                        {{ row[col] }}
+                                    {% endif %}
+                                </td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="{{ similarity_table_columns|length }}" class="empty-state">
+                                    Choose a movie and trace its nearest matches here.
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% endif %}
+    </main>
+    <script>
+        const lookupInput = document.getElementById("movieLookupInput");
+        const lookupList = document.getElementById("movieLookupList");
+
+        if (lookupInput && lookupList) {
+            const items = Array.from(lookupList.querySelectorAll(".movie-lookup-item"));
+            const movieIdInput = document.getElementById("similarityMovieIdInput");
+
+            lookupInput.addEventListener("input", () => {
+                const query = lookupInput.value.trim().toLowerCase();
+                items.forEach((item) => {
+                    const label = item.dataset.movieLabel || "";
+                    item.style.display = label.includes(query) ? "grid" : "none";
+                });
+            });
+
+            items.forEach((item) => {
+                item.addEventListener("click", () => {
+                    if (movieIdInput) {
+                        movieIdInput.value = item.dataset.movieId || "";
+                        movieIdInput.focus();
+                    }
+                });
+            });
+        }
+    </script>
+</body>
+</html>
