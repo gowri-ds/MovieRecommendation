@@ -16,18 +16,19 @@ Database used:
 ## File Guide
 
 Model and router scripts:
-- `Movie_Content_Reco_GMN_PL2.py`: TF-IDF movie-to-movie similarity
-- `Movie_Content_Reco_GMN_PL4.py`: TF-IDF user recommendations
-- `Movie_Content_Reco_GMN_PL2B_Genre_OHE.py`: Genre OHE movie similarity
-- `Movie_Content_Reco_GMN_PL4B_Genre_OHE.py`: Genre OHE user recommendations
-- `Movie_Content_Reco_GMN_PL6_A_HybridRouter.py`: weighted hybrid router
-- `Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py`: confidence-based hybrid router
-- `Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py`: offline evaluation
+Pipeline scripts in `pipeline/`:
+- `pipeline/Movie_Content_Reco_GMN_PL2.py`: TF-IDF movie-to-movie similarity
+- `pipeline/Movie_Content_Reco_GMN_PL4.py`: TF-IDF user recommendations
+- `pipeline/Movie_Content_Reco_GMN_PL2B_Genre_OHE.py`: Genre OHE movie similarity
+- `pipeline/Movie_Content_Reco_GMN_PL4B_Genre_OHE.py`: Genre OHE user recommendations
+- `pipeline/Movie_Content_Reco_GMN_PL6_A_HybridRouter.py`: weighted hybrid router
+- `pipeline/Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py`: confidence-based hybrid router
+- `pipeline/Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py`: offline evaluation
 
 UI files:
-- `GMN_Purple_Lilac_Content_Based_Reco.py`: main purple/lilac Flask UI
-- `matrixmatchmakers_contentbasedreco.py`: Matrix-themed Flask UI
-- `app.py`: compatibility wrapper for the main UI
+- `apps/Movie_Content_Reco_GMN_App_Purple_Lilac.py`: main purple/lilac Flask UI
+- `apps/Movie_Content_Reco_GMN_App_Matrix.py`: Matrix-themed Flask UI
+- `apps/Movie_Content_Reco_GMN_App.py`: compatibility wrapper for the main UI
 
 Frontend assets:
 - `templates/index.html`
@@ -45,8 +46,9 @@ SQL assets:
 Support files:
 - `requirements.txt`
 - `.gitignore`
-- `PIPELINE.md`
-- `REPORT_DRAFT.md`
+- `docs/Movie_Content_Reco_GMN_Pipeline.md`
+- `docs/REPORT_DRAFT.md`
+- `docs/Movie_Content_Reco_GMN_Limitations_And_Improvements.md`
 
 ## Naming Convention
 
@@ -106,10 +108,10 @@ Confidence hybrid router:
 ## UI Apps
 
 Main UI:
-- `py GMN_Purple_Lilac_Content_Based_Reco.py`
+- `py apps/Movie_Content_Reco_GMN_App_Purple_Lilac.py`
 
 Matrix UI:
-- `py matrixmatchmakers_contentbasedreco.py`
+- `py apps/Movie_Content_Reco_GMN_App_Matrix.py`
 
 Install dependencies first:
 - `py -m pip install -r requirements.txt`

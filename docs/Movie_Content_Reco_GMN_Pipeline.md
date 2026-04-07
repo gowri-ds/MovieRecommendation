@@ -28,13 +28,13 @@ There are two parallel movie similarity models:
 
 #### TF-IDF path
 
-[Movie_Content_Reco_GMN_PL2.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/Movie_Content_Reco_GMN_PL2.py) reads `combined_text`, converts it into TF-IDF vectors, computes cosine similarity, and stores the top 20 similar movies for each movie in:
+[Movie_Content_Reco_GMN_PL2.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/pipeline/Movie_Content_Reco_GMN_PL2.py) reads `combined_text`, converts it into TF-IDF vectors, computes cosine similarity, and stores the top 20 similar movies for each movie in:
 
 - `movie_content_similarity_top20`
 
 #### Genre OHE path
 
-[Movie_Content_Reco_GMN_PL2B_Genre_OHE.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/Movie_Content_Reco_GMN_PL2B_Genre_OHE.py) reads movie genres, converts them into one-hot encoded vectors, computes cosine similarity, and stores the top 20 similar movies for each movie in:
+[Movie_Content_Reco_GMN_PL2B_Genre_OHE.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/pipeline/Movie_Content_Reco_GMN_PL2B_Genre_OHE.py) reads movie genres, converts them into one-hot encoded vectors, computes cosine similarity, and stores the top 20 similar movies for each movie in:
 
 - `movie_genre_ohe_similarity_top20`
 
@@ -49,7 +49,7 @@ The next layer moves from item similarity to user recommendation.
 
 #### TF-IDF user recommendations
 
-[Movie_Content_Reco_GMN_PL4.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/Movie_Content_Reco_GMN_PL4.py) does the following:
+[Movie_Content_Reco_GMN_PL4.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/pipeline/Movie_Content_Reco_GMN_PL4.py) does the following:
 
 1. Reads user ratings from `user_movie_interactions`.
 2. Treats ratings `>= 4.0` as liked movies.
@@ -64,7 +64,7 @@ It saves the result to:
 
 #### Genre OHE user recommendations
 
-[Movie_Content_Reco_GMN_PL4B_Genre_OHE.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/Movie_Content_Reco_GMN_PL4B_Genre_OHE.py) repeats the same process, but uses the genre-based similarity table instead. It saves the result to:
+[Movie_Content_Reco_GMN_PL4B_Genre_OHE.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/pipeline/Movie_Content_Reco_GMN_PL4B_Genre_OHE.py) repeats the same process, but uses the genre-based similarity table instead. It saves the result to:
 
 - `user_content_recommendations_genre_ohe_top20`
 
@@ -79,7 +79,7 @@ The project then adds a router layer that combines the two user-level recommenda
 
 #### Weighted Hybrid Router
 
-[Movie_Content_Reco_GMN_PL6_A_HybridRouter.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/Movie_Content_Reco_GMN_PL6_A_HybridRouter.py) normalizes the TF-IDF and OHE recommendation scores, merges the two result sets, and computes:
+[Movie_Content_Reco_GMN_PL6_A_HybridRouter.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/pipeline/Movie_Content_Reco_GMN_PL6_A_HybridRouter.py) normalizes the TF-IDF and OHE recommendation scores, merges the two result sets, and computes:
 
 - a weighted blend of both models,
 - plus a small bonus when both models recommend the same movie.
@@ -90,7 +90,7 @@ It saves the combined output to:
 
 #### Confidence-Based Hybrid Router
 
-[Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py) takes the hybrid idea one step further.
+[Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/pipeline/Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py) takes the hybrid idea one step further.
 
 Instead of using one fixed formula for every movie, it:
 
@@ -108,7 +108,7 @@ This is the most adaptive recommendation table in the project.
 
 ### Step 5: Evaluate the Models
 
-[Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py) evaluates all four approaches:
+[Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/pipeline/Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py) evaluates all four approaches:
 
 - TF-IDF model,
 - Genre OHE model,
@@ -143,8 +143,8 @@ The repo also includes SQL helper files that support testing, comparison, and pr
 
 The recommendation outputs are then surfaced in the Flask apps:
 
-- [GMN_Purple_Lilac_Content_Based_Reco.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/GMN_Purple_Lilac_Content_Based_Reco.py)
-- [matrixmatchmakers_contentbasedreco.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/matrixmatchmakers_contentbasedreco.py)
+- [Movie_Content_Reco_GMN_App_Purple_Lilac.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/apps/Movie_Content_Reco_GMN_App_Purple_Lilac.py)
+- [Movie_Content_Reco_GMN_App_Matrix.py](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/apps/Movie_Content_Reco_GMN_App_Matrix.py)
 
 These apps let you:
 
@@ -173,13 +173,13 @@ The project pipeline can be summarized like this:
 
 If you want to rebuild the project from scratch, the scripts should generally run in this order:
 
-1. `Movie_Content_Reco_GMN_PL2.py`
-2. `Movie_Content_Reco_GMN_PL2B_Genre_OHE.py`
-3. `Movie_Content_Reco_GMN_PL4.py`
-4. `Movie_Content_Reco_GMN_PL4B_Genre_OHE.py`
-5. `Movie_Content_Reco_GMN_PL6_A_HybridRouter.py`
-6. `Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py`
-7. `Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py`
+1. `pipeline/Movie_Content_Reco_GMN_PL2.py`
+2. `pipeline/Movie_Content_Reco_GMN_PL2B_Genre_OHE.py`
+3. `pipeline/Movie_Content_Reco_GMN_PL4.py`
+4. `pipeline/Movie_Content_Reco_GMN_PL4B_Genre_OHE.py`
+5. `pipeline/Movie_Content_Reco_GMN_PL6_A_HybridRouter.py`
+6. `pipeline/Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py`
+7. `pipeline/Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py`
 
 The Flask apps are used after the tables are already built.
 

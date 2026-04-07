@@ -1,6 +1,8 @@
+from pathlib import Path
+
 from flask import Flask, render_template, request
 
-from GMN_Purple_Lilac_Content_Based_Reco import (
+from Movie_Content_Reco_GMN_App_Purple_Lilac import (
     DB_PATH,
     DEFAULT_TOP_N,
     MODEL_CONFIGS,
@@ -16,8 +18,13 @@ from GMN_Purple_Lilac_Content_Based_Reco import (
     fetch_recommendations,
 )
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    template_folder=str(PROJECT_ROOT / "templates"),
+    static_folder=str(PROJECT_ROOT / "static"),
+)
 
 
 @app.route("/", methods=["GET", "POST"])

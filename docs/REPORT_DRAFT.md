@@ -172,8 +172,8 @@ Supporting SQL scripts strengthen this architecture by separating database setup
 
 The project includes two Flask applications:
 
-- `GMN_Purple_Lilac_Content_Based_Reco.py`
-- `matrixmatchmakers_contentbasedreco.py`
+- `apps/Movie_Content_Reco_GMN_App_Purple_Lilac.py`
+- `apps/Movie_Content_Reco_GMN_App_Matrix.py`
 
 The main Flask UI allows users to:
 
@@ -271,15 +271,15 @@ Among the evaluated methods, Genre OHE produced the strongest offline performanc
 
 ## Appendix: Key Pipeline Files
 
-- `Movie_Content_Reco_GMN_PL2.py`
-- `Movie_Content_Reco_GMN_PL2B_Genre_OHE.py`
-- `Movie_Content_Reco_GMN_PL4.py`
-- `Movie_Content_Reco_GMN_PL4B_Genre_OHE.py`
-- `Movie_Content_Reco_GMN_PL6_A_HybridRouter.py`
-- `Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py`
-- `Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py`
-- `GMN_Purple_Lilac_Content_Based_Reco.py`
-- `matrixmatchmakers_contentbasedreco.py`
+- `pipeline/Movie_Content_Reco_GMN_PL2.py`
+- `pipeline/Movie_Content_Reco_GMN_PL2B_Genre_OHE.py`
+- `pipeline/Movie_Content_Reco_GMN_PL4.py`
+- `pipeline/Movie_Content_Reco_GMN_PL4B_Genre_OHE.py`
+- `pipeline/Movie_Content_Reco_GMN_PL6_A_HybridRouter.py`
+- `pipeline/Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py`
+- `pipeline/Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py`
+- `apps/Movie_Content_Reco_GMN_App_Purple_Lilac.py`
+- `apps/Movie_Content_Reco_GMN_App_Matrix.py`
 
 ## Appendix: Supporting SQL Files
 

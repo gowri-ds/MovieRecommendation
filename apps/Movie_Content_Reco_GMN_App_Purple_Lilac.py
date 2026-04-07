@@ -1,4 +1,5 @@
 import html
+from pathlib import Path
 import re
 import sqlite3
 from functools import lru_cache
@@ -76,7 +77,13 @@ COMMON_METADATA_COLUMNS = [
     "movielens_url",
 ]
 
-app = Flask(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+app = Flask(
+    __name__,
+    template_folder=str(PROJECT_ROOT / "templates"),
+    static_folder=str(PROJECT_ROOT / "static"),
+)
 
 
 def get_connection():
