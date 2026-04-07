@@ -158,6 +158,35 @@ The hybrid router combines both user-level models after normalizing each model's
 
 The confidence-based router extends this idea by using normalized scores to assign confidence buckets per recommendation. That lets the pipeline trust strong TF-IDF evidence more aggressively while still using the genre OHE model as a fallback when TF-IDF support is missing.
 
+### Confidence Router Logic
+
+The confidence-based router writes to `user_confidence_hybrid_recommendations_top20` and uses the following bucket logic:
+
+- `high_tfidf_confidence`
+  The movie has a TF-IDF recommendation and the normalized TF-IDF score is at or above the strong threshold.
+
+- `medium_tfidf_confidence`
+  The movie has a TF-IDF recommendation and the normalized TF-IDF score is at or above the medium threshold but below the strong threshold.
+
+- `ohe_fallback`
+  The movie appears in the Genre OHE recommendation table but does not appear in the TF-IDF recommendation table for that user. In this case, the router falls back to the normalized OHE score with a penalty.
+
+- `low_mixed_confidence`
+  The movie appears in both models, but the TF-IDF score is below the configured medium threshold.
+
+- `tfidf_only_low_confidence`
+  The movie appears only in TF-IDF, but the normalized TF-IDF score is below the configured medium threshold.
+
+The confidence router uses normalized per-user model scores before calculating final scores. With the current settings:
+
+- `ohe_fallback` score = `ohe_score_norm * 0.85`
+- `high_tfidf_confidence` score = `0.80 * tfidf_score_norm + 0.20 * ohe_score_norm`
+- `medium_tfidf_confidence` score = `0.65 * tfidf_score_norm + 0.35 * ohe_score_norm`
+- `low_mixed_confidence` score = `0.50 * tfidf_score_norm + 0.50 * ohe_score_norm`
+- `tfidf_only_low_confidence` score = `0.75 * tfidf_score_norm`
+
+If both models recommend the same movie, the router also adds a small agreement bonus of `0.08`.
+
 ## Limitations
 
 This model relies on TF-IDF features built from `combined_text`, so it can over-weight repeated keywords, names, or metadata tokens instead of deeper semantic meaning. One example is `Jumanji (1995)` matching with `Robin Williams: Live on Broadway (2002)`, which suggests actor-name overlap influenced the result.
