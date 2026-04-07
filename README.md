@@ -214,6 +214,37 @@ Notes:
 - poster images are fetched at request time from the stored page URLs, so image loading may be slower than the rest of the table
 - if a page blocks scraping or does not expose an image in its meta tags, the UI shows `No image`
 
+## Offline Evaluation
+
+This repository also includes an offline evaluation script:
+
+- `Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py`
+  Runs a leave-one-out evaluation across the TF-IDF model, Genre OHE model, Weighted Hybrid Router, and Confidence Hybrid Router.
+
+Evaluation design:
+- treat ratings greater than or equal to `4.0` as liked movies
+- keep users with at least `5` liked movies
+- hold out one liked movie per eligible user
+- build recommendations from the remaining liked movies
+- test whether the held-out movie appears in the top `10` recommendations
+
+Generated evaluation tables:
+- `recommender_offline_eval_user_results`
+- `recommender_offline_eval_summary`
+
+Evaluation run summary:
+- eligible users: `603`
+- `genre_ohe_model`: hit rate@10 = `0.0100`
+- `confidence_hybrid_router`: hit rate@10 = `0.0083`
+- `tfidf_model`: hit rate@10 = `0.0050`
+- `weighted_hybrid_router`: hit rate@10 = `0.0033`
+
+Interpretation:
+- the Genre OHE model performed best on this particular leave-one-out hit rate test
+- the confidence-based router outperformed the weighted hybrid router
+- all methods produced relatively low hit rates, which suggests the current content-only recommenders are structurally valid but still limited in predictive accuracy
+- this result is useful for the report because it shows that the project includes quantitative comparison, not just qualitative examples
+
 ## Limitations
 
 This model relies on TF-IDF features built from `combined_text`, so it can over-weight repeated keywords, names, or metadata tokens instead of deeper semantic meaning. One example is `Jumanji (1995)` matching with `Robin Williams: Live on Broadway (2002)`, which suggests actor-name overlap influenced the result.
