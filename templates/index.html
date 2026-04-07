@@ -94,7 +94,7 @@
                     <input type="hidden" name="mode" value="similarity">
                     <label>
                         <span>Movie ID</span>
-                        <input type="number" name="movie_id" value="{{ movie_id }}" placeholder="e.g. 1" required>
+                        <input id="similarityMovieIdInput" type="number" name="movie_id" value="{{ movie_id }}" placeholder="e.g. 1" required>
                     </label>
 
                     <label>
@@ -104,7 +104,7 @@
 
                     <div class="selection-groups">
                         <div class="selection-group">
-                            <p class="selection-label">Movie Similarity</p>
+                        <p class="selection-label">Model</p>
                             <div class="model-buttons">
                                 {% for key, config in similarity_configs.items() %}
                                 <button
@@ -119,6 +119,20 @@
                             </div>
                         </div>
                     </div>
+
+                    {% if movie_summary %}
+                    <div class="similarity-summary">
+                        Showing similar movies for <strong>{{ movie_summary.movie_title }}</strong>
+                        (Movie ID <strong>{{ movie_summary.movie_id }}</strong>),
+                        released in <strong>{{ movie_summary.release_year }}</strong>,
+                        in the genre <strong>{{ movie_summary.genere }}</strong>.
+                        {% if selected_similarity == "tfidf_similarity" %}
+                        Model 1: <strong>TF-IDF</strong>.
+                        {% elif selected_similarity == "genre_ohe_similarity" %}
+                        Model 2: <strong>Genre OHE</strong>.
+                        {% endif %}
+                    </div>
+                    {% endif %}
                 </form>
 
                 <aside class="movie-lookup">
@@ -222,7 +236,13 @@
         {% if selected_mode == "similarity" %}
         <section class="panel results-panel">
             <div class="results-header">
-                <h2>{{ similarity_configs[selected_similarity].label }} Results</h2>
+                <h2>
+                    {% if selected_similarity and selected_similarity in similarity_configs %}
+                        {{ similarity_configs[selected_similarity].label }} Similarity Results
+                    {% else %}
+                        Movie Similarity Results
+                    {% endif %}
+                </h2>
                 <p>Returned rows: {{ similarity_results|length }}</p>
             </div>
 
@@ -281,7 +301,7 @@
 
         if (lookupInput && lookupList) {
             const items = Array.from(lookupList.querySelectorAll(".movie-lookup-item"));
-            const movieIdInput = document.querySelector('input[name="movie_id"]');
+            const movieIdInput = document.getElementById("similarityMovieIdInput");
 
             lookupInput.addEventListener("input", () => {
                 const query = lookupInput.value.trim().toLowerCase();
@@ -295,6 +315,7 @@
                 item.addEventListener("click", () => {
                     if (movieIdInput) {
                         movieIdInput.value = item.dataset.movieId || "";
+                        movieIdInput.focus();
                     }
                 });
             });

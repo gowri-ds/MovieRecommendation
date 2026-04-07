@@ -55,12 +55,12 @@ MODEL_GROUPS = [
 
 SIMILARITY_CONFIGS = {
     "tfidf_similarity": {
-        "label": "TF-IDF Similarity",
+        "label": "TF-IDF",
         "table": "movie_content_similarity_top20",
         "order_by": "similarity_rank",
     },
     "genre_ohe_similarity": {
-        "label": "Genre OHE Similarity",
+        "label": "Genre OHE",
         "table": "movie_genre_ohe_similarity_top20",
         "order_by": "similarity_rank",
     },
@@ -98,6 +98,7 @@ def fetch_movie_options():
             """
             SELECT
                 movieID,
+                title_clean,
                 title,
                 release_year
             FROM movie_content_clean
@@ -111,7 +112,7 @@ def fetch_movie_options():
         options.append(
             {
                 "movieID": int(row["movieID"]),
-                "label": str(row["title"]),
+                "label": str(row["title_clean"] or row["title"]),
             }
         )
     return options
@@ -139,6 +140,7 @@ def fetch_recommendations(user_id, model_key, top_n):
             """
             SELECT
                 movieID,
+                title_clean,
                 title,
                 release_year,
                 genres_comma,
@@ -189,6 +191,7 @@ def fetch_movie_similarity(movie_id, similarity_key, top_n):
             """
             SELECT
                 movieID,
+                title_clean,
                 title,
                 release_year,
                 genres_comma,
@@ -215,6 +218,35 @@ def fetch_movie_similarity(movie_id, similarity_key, top_n):
     )
 
     return merged_df
+
+
+def fetch_movie_summary(movie_id):
+    with get_connection() as conn:
+        summary_df = pd.read_sql_query(
+            """
+            SELECT
+                movieID,
+                title_clean,
+                title,
+                release_year,
+                genres_comma
+            FROM movie_content_clean
+            WHERE movieID = ?
+            """,
+            conn,
+            params=(movie_id,),
+        )
+
+    if summary_df.empty:
+        return None
+
+    row = summary_df.iloc[0]
+    return {
+        "movie_id": int(row["movieID"]),
+        "movie_title": format_value(row.get("title_clean") or row.get("title")),
+        "release_year": format_value(row.get("release_year")),
+        "genere": format_value(row.get("genres_comma")),
+    }
 
 
 @lru_cache(maxsize=512)
@@ -281,7 +313,9 @@ def build_table_rows(df, model_key):
             "poster": row.get("poster_url", ""),
             "imdb_url": row.get("imdb_url", ""),
             "display_rank": format_value(display_rank),
-            "recommended_title": format_value(row.get("recommended_title")),
+            "recommended_title": format_value(
+                row.get("title_clean") or row.get("recommended_title")
+            ),
             "release_year": format_value(row.get("release_year")),
             "genere": format_value(row.get("genres_comma")),
         }
@@ -306,7 +340,9 @@ def build_similarity_rows(df):
                 "poster": row.get("poster_url", ""),
                 "imdb_url": row.get("imdb_url", ""),
                 "display_rank": format_value(row.get("similarity_rank")),
-                "recommended_title": format_value(row.get("similar_title")),
+                "recommended_title": format_value(
+                    row.get("title_clean") or row.get("similar_title")
+                ),
                 "release_year": format_value(row.get("release_year")),
                 "genere": format_value(row.get("genres_comma")),
             }
@@ -321,7 +357,7 @@ def index():
     selected_model = request.form.get("model", "tfidf")
     user_id = request.form.get("user_id", "1").strip()
     top_n = request.form.get("top_n", str(DEFAULT_TOP_N)).strip()
-    selected_similarity = request.form.get("similarity_model", "tfidf_similarity")
+    selected_similarity = request.form.get("similarity_model", "tfidf_similarity").strip()
     movie_id = request.form.get("movie_id", "1").strip()
     similarity_top_n = request.form.get("similarity_top_n", str(DEFAULT_TOP_N)).strip()
     active_form = request.form.get("active_form", "")
@@ -333,6 +369,7 @@ def index():
     error_message = ""
     similarity_error_message = ""
     movie_options = fetch_movie_options()
+    movie_summary = None
 
     if request.method == "POST":
         if selected_mode not in ("recommendation", "similarity"):
@@ -377,6 +414,7 @@ def index():
                     selected_similarity,
                     parsed_similarity_top_n,
                 )
+                movie_summary = fetch_movie_summary(parsed_movie_id)
                 similarity_results = build_similarity_rows(similarity_df)
                 if not similarity_results:
                     similarity_error_message = (
@@ -408,6 +446,7 @@ def index():
         similarity_table_columns=similarity_table_columns,
         similarity_results=similarity_results,
         similarity_error_message=similarity_error_message,
+        movie_summary=movie_summary,
         movie_options=movie_options,
         db_path=DB_PATH,
     )
