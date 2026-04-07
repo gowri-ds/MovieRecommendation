@@ -189,7 +189,7 @@ If both models recommend the same movie, the router also adds a small agreement 
 
 ## UI Explorer
 
-This repository also includes a lightweight Flask web app in `app.py`.
+This repository also includes a lightweight Flask web app in `GMN_Purple_Lilac_Content_Based_Reco.py`.
 
 What the UI does:
 - accepts a `userID`
@@ -205,7 +205,7 @@ How to run it:
    `py -m pip install -r requirements.txt`
 
 2. Start the app:
-   `py app.py`
+   `py GMN_Purple_Lilac_Content_Based_Reco.py`
 
 3. Open the local URL shown in the terminal, usually:
    `http://127.0.0.1:5000`
@@ -213,6 +213,9 @@ How to run it:
 Notes:
 - poster images are fetched at request time from the stored page URLs, so image loading may be slower than the rest of the table
 - if a page blocks scraping or does not expose an image in its meta tags, the UI shows `No image`
+
+Compatibility note:
+- `app.py` remains as a small wrapper entry point for convenience, but the main purple/lilac UI file is `GMN_Purple_Lilac_Content_Based_Reco.py`
 
 ## Offline Evaluation
 

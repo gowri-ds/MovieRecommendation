@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request
 
-from app import (
+from GMN_Purple_Lilac_Content_Based_Reco import (
     DB_PATH,
     DEFAULT_TOP_N,
     MODEL_CONFIGS,
