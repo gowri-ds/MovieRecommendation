@@ -1,10 +1,11 @@
 # GMN Content Recommendation Pipeline
 
-This repository contains five Python scripts that build three related recommendation workflows on top of a SQLite database:
+This repository contains six Python scripts that build four related recommendation workflows on top of a SQLite database:
 
 - a TF-IDF text-based pipeline
 - a genre one-hot encoding (OHE) pipeline
 - a hybrid router that blends both user-level models
+- a confidence-based hybrid router that applies rule-based score routing
 
 ## Files
 
@@ -22,6 +23,9 @@ This repository contains five Python scripts that build three related recommenda
 
 - `Movie_Content_Reco_GMN_PL6_A_HybridRouter.py`
   Builds hybrid user-level recommendations by blending normalized TF-IDF and genre OHE recommendation scores, adding a small overlap bonus when both models recommend the same movie, and writing the final ranked output to SQLite.
+
+- `Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py`
+  Builds a confidence-based hybrid recommendation table that uses normalized model scores, confidence buckets, and fallback rules to decide how strongly to trust TF-IDF versus genre OHE for each recommendation.
 
 ## Database
 
@@ -108,6 +112,25 @@ Columns:
 - `model_source`
 - `final_rank`
 
+#### `user_confidence_hybrid_recommendations_top20`
+
+Stores the top 20 confidence-routed hybrid recommendations per user after combining TF-IDF and genre OHE outputs with rule-based routing.
+
+Columns:
+- `final_rank`
+- `userID`
+- `recommended_movieID`
+- `recommended_title`
+- `tfidf_score`
+- `ohe_score`
+- `tfidf_score_norm`
+- `ohe_score_norm`
+- `recommended_by_both`
+- `model_source`
+- `confidence_bucket`
+- `confidence_label`
+- `final_score`
+
 ## Execution Summary
 
 The scripts were run successfully on April 6, 2026.
@@ -132,6 +155,8 @@ The TF-IDF pipeline uses `combined_text` and captures richer textual similarity 
 The genre OHE pipeline is intentionally simpler. It compares movies only on genre membership, which makes the model easier to explain but also less granular. Movies with identical genre combinations can receive identical similarity scores, often `1.0`.
 
 The hybrid router combines both user-level models after normalizing each model's score range per user. This makes the blend more stable, because the raw TF-IDF and OHE recommendation scores are not naturally on the same numeric scale.
+
+The confidence-based router extends this idea by using normalized scores to assign confidence buckets per recommendation. That lets the pipeline trust strong TF-IDF evidence more aggressively while still using the genre OHE model as a fallback when TF-IDF support is missing.
 
 ## Limitations
 
