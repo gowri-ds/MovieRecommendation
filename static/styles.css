@@ -15,7 +15,7 @@
 
 body {
     margin: 0;
-    font-family: Georgia, "Times New Roman", serif;
+    font-family: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
     color: var(--ink);
     background:
         radial-gradient(circle at top left, rgba(185, 140, 255, 0.3), transparent 35%),
@@ -106,6 +106,49 @@ label span {
     align-items: end;
 }
 
+.similarity-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.9fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.similarity-form {
+    grid-template-columns: 180px 140px 1fr;
+}
+
+.mode-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.mode-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+}
+
+.mode-button {
+    border: 0;
+    border-radius: 20px;
+    padding: 1rem 1.25rem;
+    min-width: 220px;
+    font-size: 1rem;
+    font-weight: 700;
+    background: rgba(185, 140, 255, 0.16);
+    color: #5d3397;
+    cursor: pointer;
+    transition: transform 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.mode-button:hover,
+.mode-button.is-active {
+    background: linear-gradient(135deg, #8a52d1, #b98cff);
+    color: #fff;
+    transform: translateY(-1px);
+}
+
 label {
     display: flex;
     flex-direction: column;
@@ -118,6 +161,20 @@ input {
     padding: 0.85rem 1rem;
     font-size: 1rem;
     background: rgba(255, 255, 255, 0.8);
+}
+
+select {
+    border: 1px solid rgba(103, 91, 77, 0.22);
+    border-radius: 14px;
+    padding: 0.85rem 1rem;
+    font-size: 1rem;
+    background: rgba(255, 255, 255, 0.8);
+    max-width: 100%;
+}
+
+select[size] {
+    min-height: 260px;
+    padding: 0.4rem;
 }
 
 .model-buttons {
@@ -138,6 +195,53 @@ input {
     border: 1px solid rgba(113, 78, 168, 0.14);
     border-radius: 18px;
     background: rgba(255, 255, 255, 0.35);
+}
+
+.movie-lookup {
+    padding: 1rem;
+    border: 1px solid rgba(113, 78, 168, 0.14);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.lookup-input {
+    width: 100%;
+    margin-bottom: 0.8rem;
+}
+
+.movie-lookup-list {
+    max-height: 340px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-right: 0.25rem;
+}
+
+.movie-lookup-item {
+    border: 0;
+    border-radius: 14px;
+    padding: 0.8rem 0.9rem;
+    background: rgba(185, 140, 255, 0.12);
+    display: grid;
+    grid-template-columns: 72px 1fr;
+    gap: 0.75rem;
+    text-align: left;
+    cursor: pointer;
+    color: var(--ink);
+}
+
+.movie-lookup-item:hover {
+    background: rgba(138, 82, 209, 0.18);
+}
+
+.movie-lookup-id {
+    font-weight: 700;
+    color: #6b3ea9;
+}
+
+.movie-lookup-title {
+    color: #2f1c49;
 }
 
 .selection-label {
@@ -198,7 +302,8 @@ td {
     border-bottom: 1px solid rgba(103, 91, 77, 0.12);
     text-align: left;
     vertical-align: top;
-    font-size: 0.95rem;
+    font-size: 0.97rem;
+    line-height: 1.45;
 }
 
 th {
@@ -252,12 +357,27 @@ th {
     padding: 2rem;
 }
 
+tbody td:nth-child(3) {
+    font-size: 1.02rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: #2f1c49;
+}
+
 @media (max-width: 980px) {
     .hero {
         grid-template-columns: 1fr;
     }
 
     .query-form {
+        grid-template-columns: 1fr;
+    }
+
+    .similarity-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .similarity-form {
         grid-template-columns: 1fr;
     }
 
