@@ -1,4 +1,4 @@
-# GMN Content-Based Movie Recommendation System Report
+# GMN Content-Based Movie Recommendation System Project Report
 
 ## Abstract
 
@@ -20,22 +20,22 @@ The project uses a staged pipeline implemented in Python and SQLite. Each stage 
 
 ## 2. Project Objectives
 
-The project was designed around the following objectives:
+The objectives of the project were to:
 
-- Build a TF-IDF based content similarity model using movie text features.
-- Build a Genre OHE based similarity model using genre membership alone.
-- Generate user-level recommendations from each similarity model.
-- Combine both recommenders using hybrid routing strategies.
-- Evaluate all approaches using a consistent leave-one-out offline design.
-- Provide an interface for viewing recommendations and movie similarity results.
+- build a TF-IDF based content similarity model using movie text features,
+- build a Genre OHE similarity model using genre membership alone,
+- generate user-level recommendations from each similarity model,
+- combine both recommenders through hybrid routing strategies,
+- evaluate the models using a consistent leave-one-out offline design,
+- provide an interactive interface for recommendations and similarity lookup.
 
-## 3. Data and System Environment
+## 3. Data and Environment
 
 The recommendation pipeline uses a SQLite database located at:
 
 `G:/My Drive/BSAN 780 Analytics Capstone/Final Project/Movies.db`
 
-The project reads from and writes to several database tables. Important source tables include:
+Important source tables include:
 
 - `movie_content_clean`
 - `vw_movie_content_features`
@@ -52,34 +52,34 @@ Important generated tables include:
 - `recommender_offline_eval_user_results`
 - `recommender_offline_eval_summary`
 
-The full implementation is written in Python using:
+The implementation uses:
 
 - `pandas` for data manipulation,
 - `sqlite3` for database access,
-- `scikit-learn` for TF-IDF vectorization and cosine similarity,
-- `Flask` for the web interface.
+- `scikit-learn` for vectorization and cosine similarity,
+- `Flask` for the user interfaces.
 
-The repository also includes supporting SQL files in the `sql/` folder for setup, testing, comparison, validation, and final reporting queries.
+The repository also includes supporting SQL files in the `sql/` folder for setup, testing, validation, and final reporting queries.
 
 ## 4. Methodology
 
 ### 4.1 TF-IDF Movie Similarity Model
 
-The TF-IDF model uses the `combined_text` field from the movie feature layer. This field acts as a textual fingerprint for each movie by combining descriptive content into a single text representation. The script transforms this text using TF-IDF vectorization and then computes cosine similarity across all movie pairs.
+The TF-IDF model uses the `combined_text` field from the movie feature layer. This field acts as a textual fingerprint for each movie by combining descriptive content into a single text representation. The script transforms this text using TF-IDF vectorization and computes cosine similarity across movie pairs.
 
-For each movie, the model keeps the top 20 most similar movies and writes the results to `movie_content_similarity_top20`.
+For each movie, the model stores the top 20 most similar movies in `movie_content_similarity_top20`.
 
-Strengths of this approach:
+Strengths:
 
 - captures richer textual nuance,
 - can identify similarity beyond exact genre overlap,
 - supports more detailed content matching.
 
-Weaknesses of this approach:
+Weaknesses:
 
 - may over-emphasize repeated names or keywords,
 - depends heavily on text quality,
-- may introduce noisy similarity when metadata is inconsistent.
+- can introduce noisy similarity when metadata is inconsistent.
 
 ### 4.2 Genre One-Hot Encoding Similarity Model
 
@@ -87,34 +87,34 @@ The Genre OHE model uses genre membership as structured features. Each movie is 
 
 For each movie, the model stores the top 20 most similar movies in `movie_genre_ohe_similarity_top20`.
 
-Strengths of this approach:
+Strengths:
 
 - simple and interpretable,
 - stable and easy to explain,
 - less sensitive to noisy text fields.
 
-Weaknesses of this approach:
+Weaknesses:
 
 - less nuanced than TF-IDF,
 - only captures broad genre overlap,
-- cannot distinguish movies with similar genres but very different style or themes.
+- cannot distinguish movies with similar genres but very different tone or style.
 
 ### 4.3 User-Level Recommendation Generation
 
 For both TF-IDF and Genre OHE, user-level recommendations are built from `user_movie_interactions`. Movies rated at or above `4.0` are treated as liked items. For each user:
 
-1. The system collects the user's liked movies.
-2. It retrieves the top similar movies for each liked movie.
-3. It removes movies the user has already interacted with.
-4. It aggregates candidate scores across supporting liked movies.
-5. It ranks the top 20 recommendations for that user.
+1. collect the user’s liked movies,
+2. retrieve the top similar movies for each liked movie,
+3. remove movies the user has already interacted with,
+4. aggregate candidate scores across supporting liked movies,
+5. rank the top 20 recommendations for that user.
 
 This process generates:
 
-- `user_content_recommendations_top20` for TF-IDF
-- `user_content_recommendations_genre_ohe_top20` for Genre OHE
+- `user_content_recommendations_top20` for TF-IDF,
+- `user_content_recommendations_genre_ohe_top20` for Genre OHE.
 
-The recommendation score for a user-movie pair is the summed similarity score across all supporting liked movies. Additional fields such as supporting liked movie count, average supporting rating, and support titles make the recommendations easier to interpret.
+The recommendation score for a user-movie pair is the summed similarity score across all supporting liked movies.
 
 ### 4.4 Weighted Hybrid Router
 
@@ -124,11 +124,11 @@ The weighted hybrid router combines the user-level TF-IDF and Genre OHE outputs 
 
 where the overlap bonus is applied when both models recommend the same movie.
 
-This approach is straightforward and gives TF-IDF more influence while still allowing Genre OHE to contribute supporting evidence. The output table is `user_hybrid_recommendations_top20`.
+This approach is straightforward and gives TF-IDF more influence while still allowing Genre OHE to contribute support. The output table is `user_hybrid_recommendations_top20`.
 
 ### 4.5 Confidence-Based Hybrid Router
 
-The confidence-based hybrid router uses a more adaptive rule set. Instead of applying the same weights to every recommendation, it first normalizes both models' scores and then assigns each candidate movie to a confidence bucket based on the strength of the TF-IDF signal.
+The confidence-based hybrid router uses a more adaptive rule set. Instead of applying the same weights to every recommendation, it first normalizes both models’ scores and then assigns each candidate movie to a confidence bucket based on the strength of the TF-IDF signal.
 
 Key parameters used by the router are:
 
@@ -154,19 +154,17 @@ This router trusts TF-IDF more when the normalized TF-IDF signal is strong, fall
 
 ## 5. System Architecture
 
-The pipeline follows a layered design:
+The project follows a staged design:
 
-1. Movie feature preparation in SQLite.
-2. Movie-to-movie similarity generation.
-3. User-level recommendation generation.
-4. Hybrid routing.
-5. Offline evaluation.
-6. SQL-based testing, validation, and reporting.
-7. Web-based presentation.
+1. movie feature preparation in SQLite,
+2. movie-to-movie similarity generation,
+3. user-level recommendation generation,
+4. hybrid routing,
+5. offline evaluation,
+6. SQL-based testing, validation, and reporting,
+7. web-based presentation.
 
-This staged structure improves traceability because each output table can be inspected independently. It also makes the project easier to debug and explain.
-
-Supporting SQL scripts strengthen this architecture by separating database setup, testing queries, model comparison, validation, and final reporting from the Python model-building workflow.
+This structure improves traceability because each output table can be inspected independently. It also separates pipeline logic, applications, documentation, and SQL support files into clearer repo sections.
 
 ## 6. User Interface
 
@@ -175,7 +173,7 @@ The project includes two Flask applications:
 - `apps/Movie_Content_Reco_GMN_App_Purple_Lilac.py`
 - `apps/Movie_Content_Reco_GMN_App_Matrix.py`
 
-The main Flask UI allows users to:
+The apps allow users to:
 
 - request recommendations for a selected `userID`,
 - choose among TF-IDF, Genre OHE, Weighted Hybrid, and Confidence Hybrid outputs,
@@ -183,7 +181,7 @@ The main Flask UI allows users to:
 - view movie metadata,
 - display poster images and external links.
 
-This interface makes the recommendation system more accessible to non-technical users and demonstrates how the database outputs can support an end-user application.
+This interface makes the recommendation system easier to demonstrate and supports both technical and non-technical project audiences.
 
 ## 7. Offline Evaluation Design
 
@@ -214,7 +212,7 @@ Metrics written to the evaluation summary include:
 
 ## 8. Results
 
-The latest summary recorded in the project materials reports:
+Latest offline evaluation summary:
 
 - eligible users: `603`
 - `genre_ohe_model`: hit rate@10 = `0.0100`
@@ -226,50 +224,49 @@ These results indicate that:
 
 - the Genre OHE model performed best in this offline test,
 - the confidence-based router improved on the weighted hybrid router,
-- the TF-IDF model alone did not outperform the simpler Genre OHE baseline,
-- all methods achieved relatively low absolute hit rates.
-
-The low scores suggest that the pipeline is functioning correctly from a systems perspective, but recommendation accuracy remains limited. This is consistent with a content-only recommendation design, especially when evaluation is based on a strict holdout protocol.
+- the TF-IDF model did not outperform the simpler Genre OHE baseline,
+- all methods achieved low absolute hit rates.
 
 ## 9. Discussion
 
-One of the most interesting findings in this project is that the simpler Genre OHE model outperformed the richer TF-IDF model in offline evaluation. A likely explanation is that genre similarity provides a stable and reliable signal for broad movie preference, while TF-IDF may introduce noise from repeated names, metadata artifacts, or overly specific text overlap.
+One of the most important findings in this project is that the simpler Genre OHE model outperformed the richer TF-IDF model in offline evaluation. A likely explanation is that genre similarity provides a stable and reliable signal for broad movie preference, while TF-IDF may introduce noise from repeated names, metadata artifacts, or overly specific text overlap.
 
-The confidence-based router performed better than the fixed weighted hybrid because it adapts the scoring rule instead of assuming the same blend is optimal for every movie. This is a meaningful design improvement because it treats strong TF-IDF evidence differently from weak TF-IDF evidence and provides a fallback path when only Genre OHE is available.
+The confidence-based router performed better than the fixed weighted hybrid because it adapts the scoring rule instead of assuming the same blend is optimal for every movie. This supports the idea that confidence-aware hybrid routing is more effective than a static weighted blend in this project setting.
 
-Even so, none of the methods achieved strong predictive performance. This highlights a core limitation of content-based recommendation: it can struggle to capture taste patterns that are better explained by collaborative signals, temporal behavior, or richer semantic embeddings.
+At the same time, none of the methods achieved strong predictive performance. This highlights an important limitation of content-based recommendation: it can struggle to capture taste patterns that are better explained by collaborative behavior or richer semantic representations.
 
 ## 10. Limitations
 
-This project has several limitations:
+The project has several limitations:
 
 - it is content-based only and does not use collaborative filtering,
 - TF-IDF can overweight repeated tokens or inconsistent metadata,
 - Genre OHE is interpretable but coarse,
-- offline accuracy is low across all models,
-- the system depends on the quality and completeness of the underlying database.
-
-In addition, the leave-one-out design is useful for comparison, but it does not fully represent how real users interact with a recommendation interface over time.
+- the candidate pool is limited by top-20 similarity tables,
+- hybrid weights and thresholds are hand-tuned,
+- offline accuracy is low across all evaluated models.
 
 ## 11. Future Improvements
 
-Several extensions could improve the system:
+Future work could improve the system by:
 
-- add collaborative filtering or matrix factorization,
-- replace basic TF-IDF with embeddings from modern language models,
-- tune thresholds and weights systematically instead of manually,
-- incorporate additional metadata such as cast, directors, keywords, and plot summaries,
-- evaluate with more ranking metrics and broader test designs,
-- personalize hybrid routing based on user history characteristics,
-- add explanation panels in the UI showing why each movie was recommended.
+- strengthening `combined_text` and movie metadata quality,
+- expanding similarity candidate pools beyond top 20,
+- weighting stronger user ratings more heavily,
+- tuning hybrid thresholds and weights systematically,
+- adding reranking features such as support count or popularity smoothing,
+- replacing or extending TF-IDF with embeddings,
+- integrating collaborative filtering into a larger hybrid recommender.
 
 ## 12. Conclusion
 
-This project delivers a full content-based recommendation pipeline, from movie similarity generation through user recommendation, hybrid routing, evaluation, SQL-based validation, and user interface delivery. The work demonstrates strong system design, reproducible table-based outputs, and thoughtful comparison across multiple recommendation strategies.
+This project delivers a complete content-based recommendation pipeline, from movie similarity generation through user recommendation, hybrid routing, evaluation, SQL-based validation, and user interface delivery. The work demonstrates strong system design, reproducible table-based outputs, and thoughtful comparison across multiple recommendation strategies.
 
 Among the evaluated methods, Genre OHE produced the strongest offline performance, while the confidence-based hybrid router provided the best hybrid result. Although overall accuracy remains modest, the project establishes a solid foundation for future recommender development and offers a clear path toward more advanced hybrid or collaborative approaches.
 
-## Appendix: Key Pipeline Files
+## Appendix: Key Files
+
+Pipeline:
 
 - `pipeline/Movie_Content_Reco_GMN_PL2.py`
 - `pipeline/Movie_Content_Reco_GMN_PL2B_Genre_OHE.py`
@@ -278,10 +275,13 @@ Among the evaluated methods, Genre OHE produced the strongest offline performanc
 - `pipeline/Movie_Content_Reco_GMN_PL6_A_HybridRouter.py`
 - `pipeline/Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py`
 - `pipeline/Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py`
+
+Apps:
+
 - `apps/Movie_Content_Reco_GMN_App_Purple_Lilac.py`
 - `apps/Movie_Content_Reco_GMN_App_Matrix.py`
 
-## Appendix: Supporting SQL Files
+SQL:
 
 - `sql/Movie_Content_Reco_GMN_PL1_SQL_Setup.sql`
 - `sql/Movie_Content_Reco_GMN_PL4_SQL_Testing_Queries.sql`

@@ -1,155 +1,127 @@
 # GMN Content Recommendation Pipeline
 
-This project builds and compares several content-based movie recommendation approaches on top of a SQLite database.
+This project builds and compares several content-based movie recommendation approaches on top of a SQLite database. It includes item similarity models, user-level recommenders, hybrid routing strategies, offline evaluation, SQL support files, and two Flask UI apps.
+
+## Project Scope
 
 Core workflows:
+
 - TF-IDF movie similarity and user recommendation
 - Genre OHE movie similarity and user recommendation
 - Weighted hybrid router
 - Confidence-based hybrid router
 - Offline evaluation
-- Two Flask UI apps
+- Flask apps for recommendation and similarity lookup
 
 Database used:
+
 - `G:/My Drive/BSAN 780 Analytics Capstone/Final Project/Movies.db`
 
-## File Guide
+## Repo Structure
 
-Model and router scripts:
-Pipeline scripts in `pipeline/`:
-- `pipeline/Movie_Content_Reco_GMN_PL2.py`: TF-IDF movie-to-movie similarity
-- `pipeline/Movie_Content_Reco_GMN_PL4.py`: TF-IDF user recommendations
-- `pipeline/Movie_Content_Reco_GMN_PL2B_Genre_OHE.py`: Genre OHE movie similarity
-- `pipeline/Movie_Content_Reco_GMN_PL4B_Genre_OHE.py`: Genre OHE user recommendations
-- `pipeline/Movie_Content_Reco_GMN_PL6_A_HybridRouter.py`: weighted hybrid router
-- `pipeline/Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py`: confidence-based hybrid router
-- `pipeline/Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py`: offline evaluation
+Pipeline scripts:
 
-UI files:
-- `apps/Movie_Content_Reco_GMN_App_Purple_Lilac.py`: main purple/lilac Flask UI
-- `apps/Movie_Content_Reco_GMN_App_Matrix.py`: Matrix-themed Flask UI
-- `apps/Movie_Content_Reco_GMN_App.py`: compatibility wrapper for the main UI
+- `pipeline/Movie_Content_Reco_GMN_PL2.py`
+- `pipeline/Movie_Content_Reco_GMN_PL2B_Genre_OHE.py`
+- `pipeline/Movie_Content_Reco_GMN_PL4.py`
+- `pipeline/Movie_Content_Reco_GMN_PL4B_Genre_OHE.py`
+- `pipeline/Movie_Content_Reco_GMN_PL6_A_HybridRouter.py`
+- `pipeline/Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py`
+- `pipeline/Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py`
 
-Frontend assets:
-- `templates/index.html`
-- `templates/matrix_index.html`
-- `static/styles.css`
-- `static/matrix_styles.css`
+Apps:
 
-SQL assets:
-- `sql/Movie_Content_Reco_GMN_PL1_SQL_Setup.sql`: base SQL preparation script
-- `sql/Movie_Content_Reco_GMN_PL4_SQL_Testing_Queries.sql`: SQL testing and inspection queries
-- `sql/Movie_Content_Reco_GMN_PL5_A_SQL_Model_Comparison.sql`: comparison queries for movie and user model outputs
-- `sql/Movie_Content_Reco_GMN_PL5_B_SQL_Model_Validation.sql`: validation queries for comparison tables
-- `sql/Movie_Content_Reco_GMN_PL8_SQL_Final_Output_Queries.sql`: final project output queries
+- `apps/Movie_Content_Reco_GMN_App_Purple_Lilac.py`
+- `apps/Movie_Content_Reco_GMN_App_Matrix.py`
+- `apps/Movie_Content_Reco_GMN_App.py`
 
-Support files:
-- `requirements.txt`
-- `.gitignore`
+Docs:
+
 - `docs/Movie_Content_Reco_GMN_Pipeline.md`
-- `docs/REPORT_DRAFT.md`
+- `docs/Movie_Content_Reco_GMN_Project_Report.md`
 - `docs/Movie_Content_Reco_GMN_Limitations_And_Improvements.md`
 
-## Naming Convention
+SQL:
 
-Project script naming follows the pipeline stage:
-- `PL2`: movie similarity build
-- `PL4`: user recommendation build
-- `PL6`: router layer
-- `PL7`: evaluation
+- `sql/Movie_Content_Reco_GMN_PL1_SQL_Setup.sql`
+- `sql/Movie_Content_Reco_GMN_PL4_SQL_Testing_Queries.sql`
+- `sql/Movie_Content_Reco_GMN_PL5_A_SQL_Model_Comparison.sql`
+- `sql/Movie_Content_Reco_GMN_PL5_B_SQL_Model_Validation.sql`
+- `sql/Movie_Content_Reco_GMN_PL8_SQL_Final_Output_Queries.sql`
 
-SQL naming:
-- SQL files follow the same `Movie_Content_Reco_GMN_...` naming pattern as the Python pipeline
-- the `SQL_...` suffix clarifies that these are database support files rather than Python pipeline stages
+Frontend assets:
 
-Suffixes:
-- no suffix: TF-IDF path
-- `B_Genre_OHE`: genre one-hot encoding path
-- `A_HybridRouter`: weighted hybrid router
-- `B_ConfidenceRouter`: confidence-based hybrid router
+- `templates/`
+- `static/`
 
-## Main SQLite Tables
+## Main Output Tables
 
 Similarity tables:
+
 - `movie_content_similarity_top20`
 - `movie_genre_ohe_similarity_top20`
 
 User recommendation tables:
+
 - `user_content_recommendations_top20`
 - `user_content_recommendations_genre_ohe_top20`
 - `user_hybrid_recommendations_top20`
 - `user_confidence_hybrid_recommendations_top20`
 
 Evaluation tables:
+
 - `recommender_offline_eval_user_results`
 - `recommender_offline_eval_summary`
 
-## What Each Approach Does
+## How To Run
 
-TF-IDF:
-- uses `combined_text`
-- captures richer text-based similarity
-- can over-weight repeated names or keywords
+Install dependencies:
 
-Genre OHE:
-- uses genre one-hot encoding
-- easier to explain
-- less nuanced than TF-IDF
+```bash
+py -m pip install -r requirements.txt
+```
 
-Weighted hybrid router:
-- blends normalized TF-IDF and Genre OHE user-level scores
-- adds a small overlap bonus when both models recommend the same movie
+Run the pipeline in this order:
 
-Confidence hybrid router:
-- uses normalized scores and confidence buckets
-- trusts stronger TF-IDF evidence more
-- uses Genre OHE as fallback when TF-IDF is missing
+1. `py pipeline/Movie_Content_Reco_GMN_PL2.py`
+2. `py pipeline/Movie_Content_Reco_GMN_PL2B_Genre_OHE.py`
+3. `py pipeline/Movie_Content_Reco_GMN_PL4.py`
+4. `py pipeline/Movie_Content_Reco_GMN_PL4B_Genre_OHE.py`
+5. `py pipeline/Movie_Content_Reco_GMN_PL6_A_HybridRouter.py`
+6. `py pipeline/Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py`
+7. `py pipeline/Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py`
 
-## UI Apps
+Run the apps:
 
-Main UI:
-- `py apps/Movie_Content_Reco_GMN_App_Purple_Lilac.py`
-
-Matrix UI:
-- `py apps/Movie_Content_Reco_GMN_App_Matrix.py`
-
-Install dependencies first:
-- `py -m pip install -r requirements.txt`
+```bash
+py apps/Movie_Content_Reco_GMN_App_Purple_Lilac.py
+py apps/Movie_Content_Reco_GMN_App_Matrix.py
+```
 
 Then open:
+
 - `http://127.0.0.1:5000`
 
-Both UIs support:
-- user recommendation flow
-- movie similarity flow
-- poster images
-- IMDb-linked poster tiles
-- movie metadata from `movie_content_clean`
+## Evaluation Snapshot
 
-## Offline Evaluation
+Latest offline evaluation summary:
 
-The evaluation script uses a leave-one-out design:
-- liked movies are ratings `>= 4.0`
-- users need at least `5` liked movies
-- one liked movie is held out per eligible user
-- recommendations are built from the remaining liked movies
-- evaluation checks whether the held-out movie appears in top `10`
-
-Latest summary:
 - eligible users: `603`
 - `genre_ohe_model`: hit rate@10 = `0.0100`
 - `confidence_hybrid_router`: hit rate@10 = `0.0083`
 - `tfidf_model`: hit rate@10 = `0.0050`
 - `weighted_hybrid_router`: hit rate@10 = `0.0033`
 
-Interpretation:
-- Genre OHE performed best on this leave-one-out test
-- confidence routing outperformed the weighted hybrid router
-- all methods had low hit rates, so the system is operational but still limited in predictive accuracy
+Quick interpretation:
 
-## Limitations
+- Genre OHE performed best on this leave-one-out test.
+- The confidence hybrid router outperformed the weighted hybrid router.
+- Overall hit rates are low, so the system is functional but still limited in predictive accuracy.
 
-- TF-IDF can over-weight repeated metadata terms
-- Genre OHE is easier to explain but less granular
-- the project is content-based only and does not use collaborative filtering
-- current validation is strong structurally, but predictive accuracy still has room to improve
+## Further Documentation
+
+For deeper detail, see:
+
+- [Pipeline Walkthrough](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/docs/Movie_Content_Reco_GMN_Pipeline.md)
+- [Project Report](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/docs/Movie_Content_Reco_GMN_Project_Report.md)
+- [Evaluation, Limitations, and Improvements](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/docs/Movie_Content_Reco_GMN_Limitations_And_Improvements.md)
