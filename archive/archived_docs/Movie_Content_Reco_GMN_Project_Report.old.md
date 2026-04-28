@@ -103,7 +103,7 @@ Weaknesses:
 
 For both TF-IDF and Genre OHE, user-level recommendations are built from `user_movie_interactions`. Movies rated at or above `4.0` are treated as liked items. For each user:
 
-1. collect the userâ€™s liked movies,
+1. collect the user’s liked movies,
 2. retrieve the top similar movies for each liked movie,
 3. remove movies the user has already interacted with,
 4. aggregate candidate scores across supporting liked movies,
@@ -128,7 +128,7 @@ This approach is straightforward and gives TF-IDF more influence while still all
 
 ### 4.5 Confidence-Based Hybrid Router
 
-The confidence-based hybrid router uses a more adaptive rule set. Instead of applying the same weights to every recommendation, it first normalizes both modelsâ€™ scores and then assigns each candidate movie to a confidence bucket based on the strength of the TF-IDF signal.
+The confidence-based hybrid router uses a more adaptive rule set. Instead of applying the same weights to every recommendation, it first normalizes both models’ scores and then assigns each candidate movie to a confidence bucket based on the strength of the TF-IDF signal.
 
 Key parameters used by the router are:
 

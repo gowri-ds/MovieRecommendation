@@ -57,10 +57,11 @@ from datetime import datetime
 
 import pandas as pd
 
+from config import DB_PATH
+
 # ---------------------------------------------------------------------
 # USER SETTINGS
 # ---------------------------------------------------------------------
-DB_PATH = r"G:/My Drive/BSAN 780 Analytics Capstone/Final Project/Movies.db"
 LIKED_RATING_THRESHOLD = 4.0
 TOP_N_PER_USER = 20
 

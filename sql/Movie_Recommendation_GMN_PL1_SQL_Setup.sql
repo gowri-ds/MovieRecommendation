@@ -16,6 +16,17 @@
         c) vw_movie_content_features
    5) Adds indexes so downstream queries stay fast.
 
+   NOTE ABOUT ENRICHMENT
+   ----------------------------------------------------------------------
+   This script builds the base content layer only.
+   TMDB enrichment is handled separately by:
+       pipeline/Movie_Recommendation_GMN_PL0_Enrich.py
+   That Python step creates:
+       - movie_metadata_enriched
+       - vw_movie_content_features_enriched
+   The downstream content model should prefer the enriched view when it
+   exists, but this SQL sheet remains the base setup step.
+
    DESIGN CHOICES
    ----------------------------------------------------------------------
    - We materialize the two main outputs as TABLES, not views, because they

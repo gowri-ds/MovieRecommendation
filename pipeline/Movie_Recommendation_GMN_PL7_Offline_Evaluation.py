@@ -3,8 +3,8 @@
 OFFLINE EVALUATION SCRIPT
 ========================================================================
 Purpose:
-    Evaluate the TF-IDF model, Genre OHE model, Weighted Hybrid Router,
-    and Confidence Hybrid Router using a leave-one-out offline test.
+    Evaluate the main content model, the Collaborative KNN model,
+    and the hybrid router using a leave-one-out offline test.
 
 Evaluation design:
     - For each eligible user, hold out one liked movie
@@ -24,30 +24,19 @@ from datetime import datetime
 
 import pandas as pd
 
-from Movie_Content_Reco_GMN_PL6_A_HybridRouter import build_hybrid_for_user
-from Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter import (
-    build_confidence_routed_for_user,
-)
+from config import DB_PATH
+from Movie_Recommendation_GMN_PL6_A_HybridRouter import build_hybrid_for_user
 
-
-DB_PATH = r"G:/My Drive/BSAN 780 Analytics Capstone/Final Project/Movies.db"
 LIKE_THRESHOLD = 4.0
 MIN_LIKED_MOVIES = 5
 TOP_K = 10
 MODEL_TOP_N = 20
 
 TFIDF_WEIGHT = 0.7
-OHE_WEIGHT = 0.3
+COLLAB_WEIGHT = 0.3
 OVERLAP_BONUS = 0.05
 
-TFIDF_WEIGHT_STRONG = 0.80
-TFIDF_WEIGHT_MEDIUM = 0.65
-OHE_WEIGHT_STRONG = 0.20
-OHE_WEIGHT_MEDIUM = 0.35
-BOTH_BONUS = 0.08
-TFIDF_STRONG_THRESHOLD = 0.50
-TFIDF_MEDIUM_THRESHOLD = 0.20
-OHE_ONLY_PENALTY = 0.85
+COLLAB_K_NEIGHBORS = 11
 
 
 def print_divider(char="=", width=72):
@@ -95,21 +84,6 @@ def load_source_tables(conn):
         conn,
     )
 
-    ohe_similarity_df = pd.read_sql_query(
-        """
-        SELECT
-            base_movieID,
-            base_title,
-            similar_movieID,
-            similar_title,
-            similarity_score,
-            similarity_rank
-        FROM movie_genre_ohe_similarity_top20
-        ORDER BY base_movieID, similarity_rank;
-        """,
-        conn,
-    )
-
     movie_titles_df = pd.read_sql_query(
         """
         SELECT movieID, title
@@ -119,7 +93,140 @@ def load_source_tables(conn):
         conn,
     )
 
-    return interactions_df, tfidf_similarity_df, ohe_similarity_df, movie_titles_df
+    return interactions_df, tfidf_similarity_df, movie_titles_df
+
+
+def build_collaborative_artifacts(interactions_df):
+    ratings_df = (
+        interactions_df[["userID", "movieID", "rating_value"]]
+        .rename(columns={"rating_value": "rating"})
+        .copy()
+    )
+    pivot = ratings_df.pivot(index="userID", columns="movieID", values="rating").fillna(0.0)
+    ratings_matrix = pivot.values
+
+    # Cosine similarity over item columns, matching the collaborative tuning step.
+    item_matrix = ratings_matrix.T
+    item_sim = item_matrix @ item_matrix.T
+    item_norms = ((item_matrix ** 2).sum(axis=1) ** 0.5)
+    denom = item_norms[:, None] * item_norms[None, :]
+    cos_sim_matrix = item_sim / denom
+    cos_sim_matrix[~(cos_sim_matrix == cos_sim_matrix)] = 0.0
+    cos_sim_matrix[denom == 0] = 0.0
+
+    for idx in range(len(cos_sim_matrix)):
+        cos_sim_matrix[idx, idx] = 0.0
+
+    sorted_neighbors = cos_sim_matrix.argsort(axis=1)[:, ::-1]
+
+    return {
+        "pivot": pivot,
+        "ratings_matrix": ratings_matrix,
+        "cos_sim_matrix": cos_sim_matrix,
+        "sorted_neighbors": sorted_neighbors,
+        "movie_ids": list(pivot.columns),
+        "user_ids": list(pivot.index),
+        "user_id_to_row": {user_id: idx for idx, user_id in enumerate(pivot.index)},
+        "movie_id_to_col": {movie_id: idx for idx, movie_id in enumerate(pivot.columns)},
+    }
+
+
+def build_collaborative_recommendations_for_user(
+    user_id,
+    holdout_movie_id,
+    collaborative_artifacts,
+    title_lookup,
+    like_threshold,
+    top_n,
+    k_neighbors,
+):
+    if user_id not in collaborative_artifacts["user_id_to_row"]:
+        return pd.DataFrame(
+            columns=[
+                "userID",
+                "recommended_movieID",
+                "recommended_title",
+                "recommendation_score",
+                "supporting_liked_movies",
+                "avg_supporting_rating",
+                "recommendation_rank",
+                "support_movie_ids",
+                "support_movie_titles",
+            ]
+        )
+
+    user_row_idx = collaborative_artifacts["user_id_to_row"][user_id]
+    user_ratings = collaborative_artifacts["ratings_matrix"][user_row_idx]
+    temp_user = user_ratings.copy()
+
+    holdout_col_idx = collaborative_artifacts["movie_id_to_col"].get(holdout_movie_id)
+    if holdout_col_idx is not None:
+        temp_user[holdout_col_idx] = 0.0
+
+    visible_movies = [idx for idx in (temp_user >= like_threshold).nonzero()[0]]
+    rated_movies = set((temp_user >= 0.5).nonzero()[0])
+
+    movie_scores = {}
+
+    for movie_idx in visible_movies:
+        sim_scores = collaborative_artifacts["cos_sim_matrix"][movie_idx]
+        top_k_neighbors = collaborative_artifacts["sorted_neighbors"][movie_idx][:k_neighbors]
+
+        for neighbor_movie_idx in top_k_neighbors:
+            if neighbor_movie_idx in rated_movies:
+                continue
+
+            similarity = float(sim_scores[neighbor_movie_idx])
+            if similarity <= 0:
+                continue
+
+            candidate_movie_id = collaborative_artifacts["movie_ids"][neighbor_movie_idx]
+            source_movie_id = collaborative_artifacts["movie_ids"][movie_idx]
+            rating = float(temp_user[movie_idx])
+
+            candidate_entry = movie_scores.setdefault(
+                candidate_movie_id,
+                {
+                    "recommended_title": title_lookup.get(candidate_movie_id, ""),
+                    "recommendation_score": 0.0,
+                    "support_movie_ids": set(),
+                    "support_movie_titles": set(),
+                    "support_ratings": [],
+                },
+            )
+
+            candidate_entry["recommendation_score"] += similarity * rating
+            candidate_entry["support_movie_ids"].add(source_movie_id)
+            candidate_entry["support_movie_titles"].add(title_lookup.get(source_movie_id, ""))
+            candidate_entry["support_ratings"].append(rating)
+
+    ranked_movies = sorted(
+        movie_scores.items(),
+        key=lambda item: (
+            -item[1]["recommendation_score"],
+            -len(item[1]["support_movie_ids"]),
+            item[1]["recommended_title"],
+        ),
+    )[:top_n]
+
+    rows = []
+    for recommendation_rank, (candidate_movie_id, rec_info) in enumerate(ranked_movies, start=1):
+        support_ratings = rec_info["support_ratings"]
+        rows.append(
+            {
+                "userID": user_id,
+                "recommended_movieID": candidate_movie_id,
+                "recommended_title": rec_info["recommended_title"],
+                "recommendation_score": round(rec_info["recommendation_score"], 6),
+                "supporting_liked_movies": len(rec_info["support_movie_ids"]),
+                "avg_supporting_rating": round(sum(support_ratings) / len(support_ratings), 4),
+                "recommendation_rank": recommendation_rank,
+                "support_movie_ids": ", ".join(map(str, sorted(rec_info["support_movie_ids"]))),
+                "support_movie_titles": ", ".join(sorted(title for title in rec_info["support_movie_titles"] if title)),
+            }
+        )
+
+    return pd.DataFrame(rows)
 
 
 def select_holdout_rows(interactions_df, like_threshold, min_liked_movies):
@@ -245,10 +352,10 @@ def evaluate_all_models(
     eligible_liked_df,
     holdout_df,
     tfidf_similarity_df,
-    ohe_similarity_df,
     movie_titles_df,
 ):
     title_lookup = dict(zip(movie_titles_df["movieID"], movie_titles_df["title"]))
+    collaborative_artifacts = build_collaborative_artifacts(interactions_df)
     user_results = []
 
     all_seen_lookup = {
@@ -278,61 +385,39 @@ def evaluate_all_models(
             top_n=MODEL_TOP_N,
         )
 
-        ohe_rec_df = build_user_model_recommendations(
-            train_likes_df=train_likes_df,
-            seen_movie_ids=seen_movie_ids,
-            similarity_df=ohe_similarity_df,
+        collab_rec_df = build_collaborative_recommendations_for_user(
+            user_id=user_id,
+            holdout_movie_id=holdout_movie_id,
+            collaborative_artifacts=collaborative_artifacts,
+            title_lookup=title_lookup,
+            like_threshold=LIKE_THRESHOLD,
             top_n=MODEL_TOP_N,
+            k_neighbors=COLLAB_K_NEIGHBORS,
         )
 
         hybrid_rec_df = build_hybrid_for_user(
-            tfidf_df=tfidf_rec_df[[
+            content_df=tfidf_rec_df[[
                 "userID",
                 "recommended_movieID",
                 "recommended_title",
                 "recommendation_score",
-            ]].rename(columns={"recommendation_score": "tfidf_score"}),
-            ohe_df=ohe_rec_df[[
+            ]].rename(columns={"recommendation_score": "content_score"}),
+            collab_df=collab_rec_df[[
                 "userID",
                 "recommended_movieID",
                 "recommended_title",
                 "recommendation_score",
-            ]].rename(columns={"recommendation_score": "ohe_score"}),
+            ]].rename(columns={"recommendation_score": "collaborative_score"}),
             top_n=MODEL_TOP_N,
-            tfidf_weight=TFIDF_WEIGHT,
-            ohe_weight=OHE_WEIGHT,
+            content_weight=TFIDF_WEIGHT,
+            collab_weight=COLLAB_WEIGHT,
             overlap_bonus=OVERLAP_BONUS,
         )
 
-        confidence_rec_df = build_confidence_routed_for_user(
-            tfidf_df=tfidf_rec_df[[
-                "userID",
-                "recommended_movieID",
-                "recommended_title",
-                "recommendation_score",
-            ]].rename(columns={"recommendation_score": "tfidf_score"}),
-            ohe_df=ohe_rec_df[[
-                "userID",
-                "recommended_movieID",
-                "recommended_title",
-                "recommendation_score",
-            ]].rename(columns={"recommendation_score": "ohe_score"}),
-            top_n=MODEL_TOP_N,
-            tfidf_weight_strong=TFIDF_WEIGHT_STRONG,
-            tfidf_weight_medium=TFIDF_WEIGHT_MEDIUM,
-            ohe_weight_strong=OHE_WEIGHT_STRONG,
-            ohe_weight_medium=OHE_WEIGHT_MEDIUM,
-            both_bonus=BOTH_BONUS,
-            tfidf_strong_threshold=TFIDF_STRONG_THRESHOLD,
-            tfidf_medium_threshold=TFIDF_MEDIUM_THRESHOLD,
-            ohe_only_penalty=OHE_ONLY_PENALTY,
-        )
-
         evaluations = [
-            ("tfidf_model", tfidf_rec_df, "recommendation_rank"),
-            ("genre_ohe_model", ohe_rec_df, "recommendation_rank"),
-            ("weighted_hybrid_router", hybrid_rec_df, "final_rank"),
-            ("confidence_hybrid_router", confidence_rec_df, "final_rank"),
+            ("content_model", tfidf_rec_df, "recommendation_rank"),
+            ("collaborative_knn_model", collab_rec_df, "recommendation_rank"),
+            ("hybrid_router", hybrid_rec_df, "final_rank"),
         ]
 
         for model_name, rec_df, rank_col in evaluations:
@@ -459,7 +544,6 @@ def main():
         required_objects = [
             "user_movie_interactions",
             "movie_content_similarity_top20",
-            "movie_genre_ohe_similarity_top20",
             "movie_content_clean",
         ]
         missing = [obj for obj in required_objects if not table_exists(conn, obj)]
@@ -472,12 +556,10 @@ def main():
         (
             interactions_df,
             tfidf_similarity_df,
-            ohe_similarity_df,
             movie_titles_df,
         ) = load_source_tables(conn)
         print(f"Interaction rows loaded: {len(interactions_df):,}")
-        print(f"TF-IDF similarity rows loaded: {len(tfidf_similarity_df):,}")
-        print(f"Genre OHE similarity rows loaded: {len(ohe_similarity_df):,}")
+        print(f"Content similarity rows loaded: {len(tfidf_similarity_df):,}")
         print()
 
         print("[STEP 4/6] Selecting holdout movies...")
@@ -496,7 +578,6 @@ def main():
             eligible_liked_df=eligible_liked_df,
             holdout_df=holdout_df,
             tfidf_similarity_df=tfidf_similarity_df,
-            ohe_similarity_df=ohe_similarity_df,
             movie_titles_df=movie_titles_df,
         )
         summary_df = build_summary_df(user_results_df)

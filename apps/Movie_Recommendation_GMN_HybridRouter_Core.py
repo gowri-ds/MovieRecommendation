@@ -1,5 +1,4 @@
 import html
-from pathlib import Path
 import re
 import sqlite3
 from functools import lru_cache
@@ -7,11 +6,11 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import pandas as pd
-from flask import Flask, render_template, request
+from flask import render_template, request
 
+from config import DB_PATH, DEFAULT_TOP_N
 
-DB_PATH = r"G:/My Drive/BSAN 780 Analytics Capstone/Final Project/Movies.db"
-DEFAULT_TOP_N = 10
+FALLBACK_MIN_RATING_COUNT = 50
 REQUEST_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -21,49 +20,50 @@ REQUEST_HEADERS = {
 }
 
 MODEL_CONFIGS = {
-    "tfidf": {
-        "label": "TF-IDF Model",
+    "content": {
+        "label": "Blue Pill Content Signal",
+        "button_prefix": "Blue Pill",
+        "button_suffix": "Content Recommendation",
         "table": "user_content_recommendations_top20",
         "order_by": "recommendation_rank",
+        "button_class": "is-blue-pill",
     },
-    "genre_ohe": {
-        "label": "Genre OHE Model",
-        "table": "user_content_recommendations_genre_ohe_top20",
+    "collaborative_knn": {
+        "label": "Red Pill Collaborative Recommendation",
+        "button_prefix": "Red Pill",
+        "button_suffix": "Collaborative Recommendation",
+        "table": "user_collaborative_knn_recommendations_top20",
         "order_by": "recommendation_rank",
+        "button_class": "is-red-pill",
     },
     "hybrid": {
-        "label": "Weighted Hybrid Router",
+        "label": "Purple Pill Hybrid Intelligence",
+        "button_prefix": "Purple Pill",
+        "button_suffix": "Hybrid Recommendation",
         "table": "user_hybrid_recommendations_top20",
         "order_by": "final_rank",
-    },
-    "confidence": {
-        "label": "Confidence Hybrid Router",
-        "table": "user_confidence_hybrid_recommendations_top20",
-        "order_by": "final_rank",
+        "button_class": "is-purple-pill",
     },
 }
 
-MODEL_GROUPS = [
-    {
-        "label": "Models",
-        "keys": ["tfidf", "genre_ohe"],
-    },
-    {
-        "label": "Routers",
-        "keys": ["hybrid", "confidence"],
-    },
+HYBRID_APP_MODEL_CONFIGS = {
+    "content": MODEL_CONFIGS["content"],
+    "collaborative_knn": MODEL_CONFIGS["collaborative_knn"],
+    "hybrid": MODEL_CONFIGS["hybrid"],
+}
+
+HYBRID_APP_MODEL_GROUPS = [
+    {"label": "Choose Your Reality", "keys": ["content", "collaborative_knn", "hybrid"]},
 ]
 
 SIMILARITY_CONFIGS = {
-    "tfidf_similarity": {
-        "label": "TF-IDF",
+    "content_similarity": {
+        "label": "Blue Pill Content Signal",
+        "button_prefix": "Blue Pill",
+        "button_suffix": "Content Recommendation",
         "table": "movie_content_similarity_top20",
         "order_by": "similarity_rank",
-    },
-    "genre_ohe_similarity": {
-        "label": "Genre OHE",
-        "table": "movie_genre_ohe_similarity_top20",
-        "order_by": "similarity_rank",
+        "button_class": "is-blue-pill",
     },
 }
 
@@ -76,14 +76,6 @@ COMMON_METADATA_COLUMNS = [
     "tmdb_url",
     "movielens_url",
 ]
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-app = Flask(
-    __name__,
-    template_folder=str(PROJECT_ROOT / "templates"),
-    static_folder=str(PROJECT_ROOT / "static"),
-)
 
 
 def get_connection():
@@ -125,6 +117,57 @@ def fetch_movie_options():
     return options
 
 
+def fetch_user_interaction_count(conn, user_id):
+    row = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM user_movie_interactions
+        WHERE userID = ?
+        """,
+        (user_id,),
+    ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def fetch_top_rated_fallback(conn, user_id, top_n, model_key):
+    fallback_df = pd.read_sql_query(
+        """
+        SELECT
+            ? AS userID,
+            movieID AS recommended_movieID,
+            title_clean AS recommended_title,
+            release_year,
+            genres_comma,
+            avg_rating,
+            rating_count,
+            imdb_url,
+            tmdb_url,
+            movielens_url
+        FROM movie_content_clean
+        WHERE avg_rating IS NOT NULL
+          AND rating_count >= ?
+        ORDER BY avg_rating DESC, rating_count DESC, title_clean
+        LIMIT ?
+        """,
+        conn,
+        params=(user_id, FALLBACK_MIN_RATING_COUNT, top_n),
+    )
+
+    if fallback_df.empty:
+        return fallback_df
+
+    fallback_df["poster_url"] = fallback_df.apply(
+        lambda row: fetch_poster_url(row.get("tmdb_url"), row.get("imdb_url")),
+        axis=1,
+    )
+
+    rank_column = "final_rank" if model_key == "hybrid" else "recommendation_rank"
+    fallback_df[rank_column] = range(1, len(fallback_df) + 1)
+    fallback_df["model_source"] = "top_rated_fallback"
+
+    return fallback_df
+
+
 def fetch_recommendations(user_id, model_key, top_n):
     config = MODEL_CONFIGS[model_key]
     query = f"""
@@ -141,7 +184,7 @@ def fetch_recommendations(user_id, model_key, top_n):
 
         rec_df = pd.read_sql_query(query, conn, params=(user_id, top_n))
         if rec_df.empty:
-            return rec_df
+            return fetch_top_rated_fallback(conn, user_id, top_n, model_key)
 
         metadata_df = pd.read_sql_query(
             """
@@ -303,7 +346,10 @@ def format_value(value):
 
 
 def build_table_columns(model_key):
-    return ["poster", "display_rank", "recommended_title", "release_year", "genere"]
+    columns = ["poster", "display_rank", "recommended_title", "release_year", "genere"]
+    if model_key == "hybrid":
+        columns.append("pill_route")
+    return columns
 
 
 def build_table_rows(df, model_key):
@@ -326,6 +372,24 @@ def build_table_rows(df, model_key):
             "release_year": format_value(row.get("release_year")),
             "genere": format_value(row.get("genres_comma")),
         }
+
+        if model_key == "hybrid":
+            model_source = format_value(row.get("model_source")).strip().lower()
+            badge_label = "Purple Pill"
+            badge_class = "route-pill is-purple-pill"
+
+            if model_source == "content_only":
+                badge_label = "Blue Pill"
+                badge_class = "route-pill is-blue-pill"
+            elif model_source == "collaborative_only":
+                badge_label = "Red Pill"
+                badge_class = "route-pill is-red-pill"
+            elif model_source == "both":
+                badge_label = "Purple Pill"
+                badge_class = "route-pill is-purple-pill"
+
+            row_dict["pill_route"] = badge_label
+            row_dict["pill_route_class"] = badge_class
 
         rows.append(row_dict)
 
@@ -358,33 +422,61 @@ def build_similarity_rows(df):
     return rows
 
 
-@app.route("/", methods=["GET", "POST"])
-def index():
-    selected_mode = request.form.get("mode", "recommendation").strip()
-    selected_model = request.form.get("model", "tfidf")
+def render_recommendation_app(
+    template_name,
+    model_configs,
+    model_groups,
+    default_model,
+    app_title,
+    app_heading,
+    hero_subtitle="",
+    hero_kicker="",
+    allow_similarity=True,
+):
+    ui_focus_target = "choose_path"
+    selected_mode = request.form.get(
+        "mode",
+        "recommendation" if not allow_similarity else "recommendation",
+    ).strip()
+    selected_model = request.form.get("model", default_model)
     user_id = request.form.get("user_id", "1").strip()
     top_n = request.form.get("top_n", str(DEFAULT_TOP_N)).strip()
-    selected_similarity = request.form.get("similarity_model", "tfidf_similarity").strip()
+    selected_similarity = request.form.get("similarity_model", "content_similarity").strip()
     movie_id = request.form.get("movie_id", "1").strip()
     similarity_top_n = request.form.get("similarity_top_n", str(DEFAULT_TOP_N)).strip()
     active_form = request.form.get("active_form", "")
+
+    if selected_model not in model_configs:
+        selected_model = default_model
+
+    if not allow_similarity:
+        selected_mode = "recommendation"
 
     results = []
     table_columns = build_table_columns(selected_model)
     similarity_results = []
     similarity_table_columns = build_similarity_table_columns()
     error_message = ""
+    fallback_message = ""
     similarity_error_message = ""
     movie_options = fetch_movie_options()
     movie_summary = None
+    show_rabbit_trail = False
 
     if request.method == "POST":
-        if selected_mode not in ("recommendation", "similarity"):
+        if allow_similarity and selected_mode not in ("recommendation", "similarity"):
+            selected_mode = "recommendation"
+        elif not allow_similarity:
             selected_mode = "recommendation"
 
-        if active_form in ("", "recommendation_form") and selected_mode == "recommendation":
+        if active_form == "" and selected_mode == "recommendation":
+            ui_focus_target = "define_signal"
+        elif active_form == "" and selected_mode == "similarity":
+            ui_focus_target = "similarity_controls"
+
+        if active_form == "recommendation_form" and selected_mode == "recommendation":
             try:
-                if selected_model not in MODEL_CONFIGS:
+                if selected_model not in model_configs:
                     raise ValueError("Please choose a valid model.")
 
                 parsed_user_id = int(user_id)
@@ -393,11 +485,20 @@ def index():
                     raise ValueError("Top N must be greater than 0.")
 
                 result_df = fetch_recommendations(parsed_user_id, selected_model, parsed_top_n)
+                if (
+                    not result_df.empty
+                    and "model_source" in result_df.columns
+                    and result_df["model_source"].fillna("").eq("top_rated_fallback").all()
+                ):
+                    fallback_message = (
+                        "No personalized recommendation rows were available for this user, "
+                        "so the system returned top-rated fallback movies instead."
+                    )
                 results = build_table_rows(result_df, selected_model)
                 if not results:
                     error_message = (
                         f"No recommendations found for userID {parsed_user_id} "
-                        f"using the {MODEL_CONFIGS[selected_model]['label']} model."
+                        f"using the {model_configs[selected_model]['label']} model."
                     )
             except ValueError as exc:
                 error_message = str(exc)
@@ -406,7 +507,15 @@ def index():
             except Exception as exc:
                 error_message = f"Unexpected error: {exc}"
 
-        if active_form == "similarity_form" and selected_mode == "similarity":
+            if error_message:
+                ui_focus_target = "define_signal"
+            elif selected_model == "hybrid":
+                show_rabbit_trail = True
+                ui_focus_target = "rabbit_trail"
+            else:
+                ui_focus_target = "recommendation_results"
+
+        if allow_similarity and active_form == "similarity_form" and selected_mode == "similarity":
             try:
                 if selected_similarity not in SIMILARITY_CONFIGS:
                     raise ValueError("Please choose a valid similarity model.")
@@ -435,10 +544,20 @@ def index():
             except Exception as exc:
                 similarity_error_message = f"Unexpected error: {exc}"
 
+            if similarity_error_message:
+                ui_focus_target = "similarity_controls"
+            else:
+                ui_focus_target = "similarity_results"
+
     return render_template(
-        "index.html",
-        model_configs=MODEL_CONFIGS,
-        model_groups=MODEL_GROUPS,
+        template_name,
+        app_title=app_title,
+        app_heading=app_heading,
+        hero_subtitle=hero_subtitle,
+        hero_kicker=hero_kicker,
+        allow_similarity=allow_similarity,
+        model_configs=model_configs,
+        model_groups=model_groups,
         selected_mode=selected_mode,
         similarity_configs=SIMILARITY_CONFIGS,
         selected_model=selected_model,
@@ -447,6 +566,7 @@ def index():
         table_columns=table_columns,
         results=results,
         error_message=error_message,
+        fallback_message=fallback_message,
         selected_similarity=selected_similarity,
         movie_id=movie_id,
         similarity_top_n=similarity_top_n,
@@ -456,8 +576,6 @@ def index():
         movie_summary=movie_summary,
         movie_options=movie_options,
         db_path=DB_PATH,
+        show_rabbit_trail=show_rabbit_trail,
+        ui_focus_target=ui_focus_target,
     )
-
-
-if __name__ == "__main__":
-    app.run(debug=True)

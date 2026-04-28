@@ -3,22 +3,21 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>GMN Content Based Recommendation System</title>
+    <title>{{ app_title }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
     <main class="page-shell">
         <section class="hero">
             <div class="hero-copy">
-                <h1>Content Based Recommendation System</h1>
-            </div>
-            <div class="hero-card">
-                <p class="hero-label">SQLite Source</p>
-                <p class="hero-value">{{ db_path }}</p>
+                <h1 class="hero-neon-title">{{ app_heading }}</h1>
+                {% if hero_subtitle %}
+                <p class="hero-subtitle">{{ hero_subtitle }}</p>
+                {% endif %}
             </div>
         </section>
 
-        <section class="panel controls">
+        <section class="panel controls" data-ui-target="choose_path" tabindex="-1">
             <form method="post" class="mode-form">
                 <input type="hidden" name="user_id" value="{{ user_id }}">
                 <input type="hidden" name="top_n" value="{{ top_n }}">
@@ -26,8 +25,9 @@
                 <input type="hidden" name="movie_id" value="{{ movie_id }}">
                 <input type="hidden" name="similarity_top_n" value="{{ similarity_top_n }}">
                 <input type="hidden" name="similarity_model" value="{{ selected_similarity }}">
-                <p class="selection-label">Choose a Workflow</p>
+                <p class="selection-label centered-selection-label">Choose Your Path</p>
                 <div class="mode-buttons">
+                    {% if allow_similarity %}
                     <button
                         type="submit"
                         name="mode"
@@ -36,6 +36,7 @@
                     >
                         Movie Similarity
                     </button>
+                    {% endif %}
                     <button
                         type="submit"
                         name="mode"
@@ -49,33 +50,44 @@
         </section>
 
         {% if selected_mode == "recommendation" %}
-        <section class="panel controls">
+        <section class="panel controls" data-ui-target="define_signal" tabindex="-1">
             <form method="post" class="query-form">
                 <input type="hidden" name="active_form" value="recommendation_form">
                 <input type="hidden" name="mode" value="recommendation">
-                <label>
-                    <span>User ID</span>
-                    <input type="number" name="user_id" value="{{ user_id }}" placeholder="e.g. 1" required>
-                </label>
+                <div class="signal-section">
+                    <div class="signal-group-heading">
+                        <p class="selection-label centered-selection-label">Define Your Signal</p>
+                    </div>
+                    <div class="signal-fields">
+                        <label class="inline-signal-field">
+                            <span class="inline-field-label">User Signal</span>
+                            <input id="userIdInput" type="number" name="user_id" value="{{ user_id }}" placeholder="e.g. 1" required>
+                        </label>
 
-                <label>
-                    <span>Top N</span>
-                    <input type="number" name="top_n" value="{{ top_n }}" min="1" max="50" required>
-                </label>
-
-                <div class="selection-groups">
+                        <label class="inline-signal-field">
+                            <span class="inline-field-label">Depth of Discovery</span>
+                            <input type="number" name="top_n" value="{{ top_n }}" min="1" max="50" required>
+                        </label>
+                    </div>
+                </div>
+                <div class="selection-groups reality-section">
                     {% for group in model_groups %}
                     <div class="selection-group">
-                        <p class="selection-label">{{ group["label"] }}</p>
+                        <p class="selection-label centered-selection-label">{{ group["label"] }}</p>
                         <div class="model-buttons">
                             {% for key in group["keys"] %}
                             <button
                                 type="submit"
                                 name="model"
                                 value="{{ key }}"
-                                class="model-button {% if selected_model == key %}is-active{% endif %} {% if group['label'] == 'Routers' %}is-router{% endif %}"
+                                class="model-button {{ model_configs[key].button_class }} {% if selected_model == key %}is-active{% endif %} {% if group['label'] == 'Routers' %}is-router{% endif %}"
                             >
+                                {% if model_configs[key].button_prefix %}
+                                <span class="model-button-prefix">{{ model_configs[key].button_prefix }}</span>
+                                <span class="model-button-suffix">{{ model_configs[key].button_suffix }}</span>
+                                {% else %}
                                 {{ model_configs[key].label }}
+                                {% endif %}
                             </button>
                             {% endfor %}
                         </div>
@@ -86,19 +98,54 @@
         </section>
         {% endif %}
 
+        {% if show_rabbit_trail %}
+        <section class="panel rabbit-trail-panel" data-rabbit-trail data-ui-target="rabbit_trail" tabindex="-1">
+            <div class="rabbit-trail-topline">
+                <div class="rabbit-trail-header">
+                    <p class="panel-title rabbit-trail-neon">Follow the White Rabbit</p>
+                </div>
+            </div>
+            <div class="rabbit-trail-orbit">
+                <div class="rabbit-trail-center" aria-hidden="true">
+                    <img
+                        src="https://cdn.whiterabbit.group/images/meaning.jpg"
+                        alt=""
+                        class="rabbit-guide-image"
+                    >
+                </div>
+                <article class="trail-stage trail-stage-top" data-trail-step>
+                    <span class="trail-stage-number">1</span>
+                    <span class="trail-stage-label">Reading your history</span>
+                </article>
+                <article class="trail-stage trail-stage-right" data-trail-step>
+                    <span class="trail-stage-number">2</span>
+                    <span class="trail-stage-label">Finding patterns</span>
+                </article>
+                <article class="trail-stage trail-stage-bottom" data-trail-step>
+                    <span class="trail-stage-number">3</span>
+                    <span class="trail-stage-label">Comparing both paths</span>
+                </article>
+                <article class="trail-stage trail-stage-left" data-trail-step>
+                    <span class="trail-stage-number">4</span>
+                    <span class="trail-stage-label">Choosing your path</span>
+                </article>
+            </div>
+        </section>
+        {% endif %}
+
         {% if selected_mode == "similarity" %}
-        <section class="panel controls">
+        <section class="panel controls" data-ui-target="similarity_controls" tabindex="-1">
             <div class="similarity-layout">
                 <form method="post" class="query-form similarity-form">
                     <input type="hidden" name="active_form" value="similarity_form">
                     <input type="hidden" name="mode" value="similarity">
                     <label>
-                        <span>Movie ID</span>
+                        <span>Base Movie</span>
                         <input id="similarityMovieIdInput" type="number" name="movie_id" value="{{ movie_id }}" placeholder="e.g. 1" required>
                     </label>
 
                     <label>
-                        <span>Top N</span>
+                        <span>Discovery Depth</span>
                         <input type="number" name="similarity_top_n" value="{{ similarity_top_n }}" min="1" max="50" required>
                     </label>
 
@@ -111,7 +158,7 @@
                                     type="submit"
                                     name="similarity_model"
                                     value="{{ key }}"
-                                    class="model-button {% if selected_similarity == key %}is-active{% endif %}"
+                                    class="model-button {{ config.button_class }} {% if selected_similarity == key %}is-active{% endif %}"
                                 >
                                     {{ config.label }}
                                 </button>
@@ -123,13 +170,11 @@
                     {% if movie_summary %}
                     <div class="similarity-summary">
                         Showing similar movies for <strong>{{ movie_summary.movie_title }}</strong>
-                        (Movie ID <strong>{{ movie_summary.movie_id }}</strong>),
+                        (Base Movie <strong>{{ movie_summary.movie_id }}</strong>),
                         released in <strong>{{ movie_summary.release_year }}</strong>,
                         in the genre <strong>{{ movie_summary.genere }}</strong>.
-                        {% if selected_similarity == "tfidf_similarity" %}
-                        Model 1: <strong>TF-IDF</strong>.
-                        {% elif selected_similarity == "genre_ohe_similarity" %}
-                        Model 2: <strong>Genre OHE</strong>.
+                        {% if selected_similarity in similarity_configs %}
+                        Model: <strong>{{ similarity_configs[selected_similarity].label }}</strong>.
                         {% endif %}
                     </div>
                     {% endif %}
@@ -178,11 +223,23 @@
         {% endif %}
 
         {% if selected_mode == "recommendation" %}
-        <section class="panel results-panel">
+        <section class="panel results-panel {% if show_rabbit_trail %}is-pending-reveal{% endif %}" {% if show_rabbit_trail %}data-hybrid-results{% endif %} data-ui-target="recommendation_results" tabindex="-1">
             <div class="results-header">
-                <h2>{{ model_configs[selected_model].label }} Results</h2>
+                <h2 class="panel-title">
+                    {% if selected_model == "hybrid" %}
+                        <span class="rabbit-trail-neon">The System Has Chosen: Decoded Recommendations</span>
+                    {% else %}
+                        {{ model_configs[selected_model].label }} Results
+                    {% endif %}
+                </h2>
                 <p>Returned rows: {{ results|length }}</p>
             </div>
+
+            {% if fallback_message %}
+            <div class="fallback-summary">
+                <strong>Fallback active:</strong> {{ fallback_message }}
+            </div>
+            {% endif %}
 
             <div class="table-wrap">
                 <table>
@@ -213,6 +270,8 @@
                                         {% else %}
                                         <div class="poster placeholder">No image</div>
                                         {% endif %}
+                                    {% elif col == "pill_route" %}
+                                        <span class="{{ row.pill_route_class }}">{{ row[col] }}</span>
                                     {% else %}
                                         {{ row[col] }}
                                     {% endif %}
@@ -234,9 +293,9 @@
         {% endif %}
 
         {% if selected_mode == "similarity" %}
-        <section class="panel results-panel">
+        <section class="panel results-panel" data-ui-target="similarity_results" tabindex="-1">
             <div class="results-header">
-                <h2>
+                <h2 class="panel-title">
                     {% if selected_similarity and selected_similarity in similarity_configs %}
                         {{ similarity_configs[selected_similarity].label }} Similarity Results
                     {% else %}
@@ -298,6 +357,48 @@
     <script>
         const lookupInput = document.getElementById("movieLookupInput");
         const lookupList = document.getElementById("movieLookupList");
+        const uiFocusTarget = "{{ ui_focus_target }}";
+        const focusPanel = uiFocusTarget
+            ? document.querySelector(`[data-ui-target="${uiFocusTarget}"]`)
+            : null;
+        const rabbitTrailPanel = document.querySelector("[data-rabbit-trail]");
+        const rabbitTrailSteps = rabbitTrailPanel
+            ? Array.from(rabbitTrailPanel.querySelectorAll("[data-trail-step]"))
+            : [];
+        const hybridResultsPanel = document.querySelector("[data-hybrid-results]");
+
+        if (focusPanel && uiFocusTarget !== "rabbit_trail") {
+            focusPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+            window.setTimeout(() => {
+                focusPanel.focus({ preventScroll: true });
+            }, 250);
+        }
+
+        if (uiFocusTarget === "rabbit_trail" && rabbitTrailPanel && hybridResultsPanel && rabbitTrailSteps.length) {
+            rabbitTrailPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+            window.setTimeout(() => {
+                rabbitTrailPanel.focus({ preventScroll: true });
+            }, 350);
+
+            const totalSequenceMs = 20000;
+            const stepDelayMs = totalSequenceMs / rabbitTrailSteps.length;
+            const flashDurationMs = Math.min(3200, Math.max(1800, stepDelayMs - 500));
+
+            rabbitTrailSteps.forEach((step, index) => {
+                window.setTimeout(() => {
+                    step.classList.add("is-lit");
+                    window.setTimeout(() => {
+                        step.classList.remove("is-lit");
+                    }, flashDurationMs);
+                }, stepDelayMs * index);
+            });
+
+            window.setTimeout(() => {
+                hybridResultsPanel.classList.remove("is-pending-reveal");
+                hybridResultsPanel.classList.add("is-revealed");
+                hybridResultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, totalSequenceMs);
+        }
 
         if (lookupInput && lookupList) {
             const items = Array.from(lookupList.querySelectorAll(".movie-lookup-item"));

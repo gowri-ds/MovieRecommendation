@@ -3,16 +3,20 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Matrix Matchmakers Content Based Reco</title>
+    <title>{{ app_title }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='matrix_styles.css') }}">
 </head>
 <body>
     <main class="page-shell">
         <section class="hero">
             <div class="hero-copy">
-                <p class="matrix-kicker">Matrix Matchmakers</p>
-                <h1>Content Based Movie Recommendation</h1>
-                <p class="hero-subtitle">Follow the <span class="white-rabbit">White Rabbit</span><br>Your path to hidden movie connections.</p>
+                {% if hero_kicker %}
+                <p class="matrix-kicker">{{ hero_kicker }}</p>
+                {% endif %}
+                <h1>{{ app_heading }}</h1>
+                {% if hero_subtitle %}
+                <p class="hero-subtitle">{{ hero_subtitle }}</p>
+                {% endif %}
             </div>
             <div class="hero-card">
                 <p class="hero-label">SQLite Source</p>
@@ -30,9 +34,11 @@
                 <input type="hidden" name="similarity_model" value="{{ selected_similarity }}">
                 <p class="section-label">Choose a Workflow</p>
                 <div class="mode-buttons">
+                    {% if allow_similarity %}
                     <button type="submit" name="mode" value="similarity" class="mode-button {% if selected_mode == 'similarity' %}is-active{% endif %}">
                         Movie Similarity
                     </button>
+                    {% endif %}
                     <button type="submit" name="mode" value="recommendation" class="mode-button {% if selected_mode == 'recommendation' %}is-active{% endif %}">
                         User Recommendation
                     </button>
@@ -118,10 +124,8 @@
                         (Movie ID <strong>{{ movie_summary.movie_id }}</strong>), released in
                         <strong>{{ movie_summary.release_year }}</strong>, in the genre
                         <strong>{{ movie_summary.genere }}</strong>.
-                        {% if selected_similarity == "tfidf_similarity" %}
-                        Model 1: <strong>TF-IDF</strong>.
-                        {% elif selected_similarity == "genre_ohe_similarity" %}
-                        Model 2: <strong>Genre OHE</strong>.
+                        {% if selected_similarity in similarity_configs %}
+                        Model: <strong>{{ similarity_configs[selected_similarity].label }}</strong>.
                         {% endif %}
                     </div>
                     {% endif %}

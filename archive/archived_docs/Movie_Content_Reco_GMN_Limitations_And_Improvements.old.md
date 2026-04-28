@@ -46,7 +46,7 @@ The Genre OHE approach is simple and interpretable, but it only captures broad g
 
 ### 4. Small Candidate Pool
 
-The current pipeline builds from Top-20 movie similarity tables. This limits the downstream recommendation pool. A relevant movie may never be considered if it does not appear in the top 20 similar movies for the userâ€™s liked titles.
+The current pipeline builds from Top-20 movie similarity tables. This limits the downstream recommendation pool. A relevant movie may never be considered if it does not appear in the top 20 similar movies for the user’s liked titles.
 
 ### 5. Simple User Preference Modeling
 

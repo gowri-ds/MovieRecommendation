@@ -3,16 +3,15 @@
 HYBRID RECOMMENDATION ROUTER BUILD SCRIPT
 ========================================================================
 Purpose:
-    This script combines the TF-IDF recommendation model and the
-    genre one-hot encoding recommendation model into a single
-    hybrid recommendation table.
+    This script combines the main content recommendation model and the
+    collaborative KNN recommendation model into a single hybrid table.
 
 What this script creates:
     Table: user_hybrid_recommendations_top20
 
 Why this is useful:
-    - Keeps the richer TF-IDF signal
-    - Adds genre-based support from the OHE model
+    - Keeps the TMDB-enriched content signal
+    - Adds collaborative behavior from user interaction patterns
     - Rewards overlap when both models recommend the same movie
 ========================================================================
 """
@@ -23,12 +22,13 @@ from datetime import datetime
 
 import pandas as pd
 
+from config import DB_PATH
 
-DB_PATH = r"G:/My Drive/BSAN 780 Analytics Capstone/Final Project/Movies.db"
 TOP_N_PER_USER = 20
-TFIDF_WEIGHT = 0.7
-OHE_WEIGHT = 0.3
-OVERLAP_BONUS = 0.05
+CONTENT_WEIGHT = 0.45
+COLLAB_WEIGHT = 0.55
+OVERLAP_BONUS = 0.08
+FALLBACK_MIN_RATING_COUNT = 50
 
 
 def print_divider(char="=", width=72):
@@ -36,20 +36,22 @@ def print_divider(char="=", width=72):
 
 
 def table_exists(conn, object_name):
-    query = """
-    SELECT name
-    FROM sqlite_master
-    WHERE type IN ('table', 'view')
-      AND name = ?;
-    """
-    row = conn.execute(query, (object_name,)).fetchone()
+    row = conn.execute(
+        """
+        SELECT name
+        FROM sqlite_master
+        WHERE type IN ('table', 'view')
+          AND name = ?;
+        """,
+        (object_name,),
+    ).fetchone()
     return row is not None
 
 
-def _validate_weights(tfidf_weight, ohe_weight):
-    if tfidf_weight < 0 or ohe_weight < 0:
+def _validate_weights(content_weight, collab_weight):
+    if content_weight < 0 or collab_weight < 0:
         raise ValueError("Model weights must be non-negative.")
-    if tfidf_weight == 0 and ohe_weight == 0:
+    if content_weight == 0 and collab_weight == 0:
         raise ValueError("At least one model weight must be greater than 0.")
 
 
@@ -65,7 +67,6 @@ def _normalize_scores(df, score_col, normalized_col):
         df[normalized_col] = 0.0
     else:
         df[normalized_col] = df[score_col] / max_score
-
     return df
 
 
@@ -75,10 +76,10 @@ def _empty_hybrid_frame():
             "userID",
             "recommended_movieID",
             "recommended_title",
-            "tfidf_score",
-            "ohe_score",
-            "tfidf_score_norm",
-            "ohe_score_norm",
+            "content_score",
+            "collaborative_score",
+            "content_score_norm",
+            "collaborative_score_norm",
             "recommended_by_both",
             "final_score",
             "model_source",
@@ -87,72 +88,133 @@ def _empty_hybrid_frame():
     )
 
 
+def _build_top_rated_fallback(conn, user_id, top_n, min_rating_count=FALLBACK_MIN_RATING_COUNT):
+    fallback_df = pd.read_sql_query(
+        """
+        SELECT
+            ? AS userID,
+            movieID AS recommended_movieID,
+            title_clean AS recommended_title,
+            avg_rating,
+            rating_count
+        FROM movie_content_clean
+        WHERE avg_rating IS NOT NULL
+          AND rating_count >= ?
+        ORDER BY avg_rating DESC, rating_count DESC, title_clean
+        LIMIT ?
+        """,
+        conn,
+        params=(user_id, min_rating_count, top_n),
+    )
+
+    if fallback_df.empty:
+        return _empty_hybrid_frame()
+
+    max_rating = fallback_df["avg_rating"].max()
+    if pd.isna(max_rating) or max_rating <= 0:
+        fallback_df["final_score"] = 0.0
+    else:
+        fallback_df["final_score"] = fallback_df["avg_rating"] / max_rating
+
+    fallback_df["content_score"] = 0.0
+    fallback_df["collaborative_score"] = 0.0
+    fallback_df["content_score_norm"] = 0.0
+    fallback_df["collaborative_score_norm"] = 0.0
+    fallback_df["recommended_by_both"] = 0
+    fallback_df["model_source"] = "top_rated_fallback"
+    fallback_df["final_rank"] = range(1, len(fallback_df) + 1)
+
+    return fallback_df[
+        [
+            "userID",
+            "recommended_movieID",
+            "recommended_title",
+            "content_score",
+            "collaborative_score",
+            "content_score_norm",
+            "collaborative_score_norm",
+            "recommended_by_both",
+            "final_score",
+            "model_source",
+            "final_rank",
+        ]
+    ]
+
+
 def get_routed_recommendations(
     user_id,
     db_path,
     top_n=10,
-    tfidf_weight=0.7,
-    ohe_weight=0.3,
-    overlap_bonus=0.05,
+    content_weight=CONTENT_WEIGHT,
+    collab_weight=COLLAB_WEIGHT,
+    overlap_bonus=OVERLAP_BONUS,
 ):
-    """
-    Get final routed recommendations for a user by combining:
-    1. TF-IDF recommendation model
-    2. Genre OHE recommendation model
-    """
     if top_n <= 0:
         raise ValueError("top_n must be greater than 0.")
 
-    _validate_weights(tfidf_weight, ohe_weight)
+    _validate_weights(content_weight, collab_weight)
 
-    tfidf_query = """
+    content_query = """
     SELECT
         userID,
         recommended_movieID,
         recommended_title,
-        recommendation_score AS tfidf_score
+        recommendation_score AS content_score
     FROM user_content_recommendations_top20
     WHERE userID = ?
     """
 
-    ohe_query = """
+    collab_query = """
     SELECT
         userID,
         recommended_movieID,
         recommended_title,
-        recommendation_score AS ohe_score
-    FROM user_content_recommendations_genre_ohe_top20
+        recommendation_score AS collaborative_score
+    FROM user_collaborative_knn_recommendations_top20
     WHERE userID = ?
     """
 
     with sqlite3.connect(db_path) as conn:
-        tfidf_df = pd.read_sql_query(tfidf_query, conn, params=(user_id,))
-        ohe_df = pd.read_sql_query(ohe_query, conn, params=(user_id,))
+        interaction_count = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM user_movie_interactions
+            WHERE userID = ?
+            """,
+            (user_id,),
+        ).fetchone()[0]
+        content_df = pd.read_sql_query(content_query, conn, params=(user_id,))
+        collab_df = pd.read_sql_query(collab_query, conn, params=(user_id,))
+
+        if content_df.empty and collab_df.empty:
+            return _build_top_rated_fallback(conn, user_id=user_id, top_n=top_n)
 
     return build_hybrid_for_user(
-        tfidf_df=tfidf_df,
-        ohe_df=ohe_df,
+        content_df=content_df,
+        collab_df=collab_df,
         top_n=top_n,
-        tfidf_weight=tfidf_weight,
-        ohe_weight=ohe_weight,
+        content_weight=content_weight,
+        collab_weight=collab_weight,
         overlap_bonus=overlap_bonus,
     )
 
 
 def build_hybrid_for_user(
-    tfidf_df,
-    ohe_df,
+    content_df,
+    collab_df,
     top_n,
-    tfidf_weight,
-    ohe_weight,
+    content_weight,
+    collab_weight,
     overlap_bonus,
 ):
-    tfidf_df = _normalize_scores(tfidf_df, "tfidf_score", "tfidf_score_norm")
-    ohe_df = _normalize_scores(ohe_df, "ohe_score", "ohe_score_norm")
+    content_df = _normalize_scores(content_df, "content_score", "content_score_norm")
+    collab_df = _normalize_scores(
+        collab_df, "collaborative_score", "collaborative_score_norm"
+    )
 
     final_df = pd.merge(
-        tfidf_df,
-        ohe_df,
+        content_df,
+        collab_df,
         on=["userID", "recommended_movieID", "recommended_title"],
         how="outer",
     )
@@ -160,27 +222,30 @@ def build_hybrid_for_user(
     if final_df.empty:
         return _empty_hybrid_frame()
 
-    final_df["tfidf_score"] = final_df["tfidf_score"].fillna(0.0)
-    final_df["ohe_score"] = final_df["ohe_score"].fillna(0.0)
-    final_df["tfidf_score_norm"] = final_df["tfidf_score_norm"].fillna(0.0)
-    final_df["ohe_score_norm"] = final_df["ohe_score_norm"].fillna(0.0)
+    for col in [
+        "content_score",
+        "collaborative_score",
+        "content_score_norm",
+        "collaborative_score_norm",
+    ]:
+        final_df[col] = final_df[col].fillna(0.0)
 
     final_df["recommended_by_both"] = (
-        (final_df["tfidf_score"] > 0) & (final_df["ohe_score"] > 0)
+        (final_df["content_score"] > 0) & (final_df["collaborative_score"] > 0)
     ).astype(int)
 
     final_df["final_score"] = (
-        tfidf_weight * final_df["tfidf_score_norm"]
-        + ohe_weight * final_df["ohe_score_norm"]
+        content_weight * final_df["content_score_norm"]
+        + collab_weight * final_df["collaborative_score_norm"]
         + overlap_bonus * final_df["recommended_by_both"]
     )
 
     def model_source(row):
-        if row["tfidf_score"] > 0 and row["ohe_score"] > 0:
+        if row["content_score"] > 0 and row["collaborative_score"] > 0:
             return "both"
-        if row["tfidf_score"] > 0:
-            return "tfidf_only"
-        return "ohe_only"
+        if row["content_score"] > 0:
+            return "content_only"
+        return "collaborative_only"
 
     final_df["model_source"] = final_df.apply(model_source, axis=1)
 
@@ -188,8 +253,8 @@ def build_hybrid_for_user(
         by=[
             "final_score",
             "recommended_by_both",
-            "tfidf_score_norm",
-            "ohe_score_norm",
+            "collaborative_score_norm",
+            "content_score_norm",
             "recommended_title",
         ],
         ascending=[False, False, False, False, True],
@@ -197,69 +262,74 @@ def build_hybrid_for_user(
 
     final_df["final_rank"] = final_df.index + 1
 
-    final_cols = [
-        "userID",
-        "recommended_movieID",
-        "recommended_title",
-        "tfidf_score",
-        "ohe_score",
-        "tfidf_score_norm",
-        "ohe_score_norm",
-        "recommended_by_both",
-        "final_score",
-        "model_source",
-        "final_rank",
-    ]
-    return final_df[final_cols].head(top_n)
+    return final_df[
+        [
+            "userID",
+            "recommended_movieID",
+            "recommended_title",
+            "content_score",
+            "collaborative_score",
+            "content_score_norm",
+            "collaborative_score_norm",
+            "recommended_by_both",
+            "final_score",
+            "model_source",
+            "final_rank",
+        ]
+    ].head(top_n)
 
 
 def load_all_model_recommendations(conn):
-    tfidf_query = """
-    SELECT
-        userID,
-        recommended_movieID,
-        recommended_title,
-        recommendation_score AS tfidf_score
-    FROM user_content_recommendations_top20
-    ORDER BY userID, recommendation_rank;
-    """
+    content_df = pd.read_sql_query(
+        """
+        SELECT
+            userID,
+            recommended_movieID,
+            recommended_title,
+            recommendation_score AS content_score
+        FROM user_content_recommendations_top20
+        ORDER BY userID, recommendation_rank;
+        """,
+        conn,
+    )
 
-    ohe_query = """
-    SELECT
-        userID,
-        recommended_movieID,
-        recommended_title,
-        recommendation_score AS ohe_score
-    FROM user_content_recommendations_genre_ohe_top20
-    ORDER BY userID, recommendation_rank;
-    """
+    collab_df = pd.read_sql_query(
+        """
+        SELECT
+            userID,
+            recommended_movieID,
+            recommended_title,
+            recommendation_score AS collaborative_score
+        FROM user_collaborative_knn_recommendations_top20
+        ORDER BY userID, recommendation_rank;
+        """,
+        conn,
+    )
 
-    tfidf_df = pd.read_sql_query(tfidf_query, conn)
-    ohe_df = pd.read_sql_query(ohe_query, conn)
-    return tfidf_df, ohe_df
+    return content_df, collab_df
 
 
 def build_hybrid_recommendation_table(
-    tfidf_df,
-    ohe_df,
+    content_df,
+    collab_df,
     top_n_per_user,
-    tfidf_weight,
-    ohe_weight,
+    content_weight,
+    collab_weight,
     overlap_bonus,
 ):
-    user_ids = sorted(set(tfidf_df["userID"]).union(set(ohe_df["userID"])))
+    user_ids = sorted(set(content_df["userID"]).union(set(collab_df["userID"])))
     all_user_frames = []
 
     for user_id in user_ids:
-        user_tfidf = tfidf_df[tfidf_df["userID"] == user_id].copy()
-        user_ohe = ohe_df[ohe_df["userID"] == user_id].copy()
+        user_content = content_df[content_df["userID"] == user_id].copy()
+        user_collab = collab_df[collab_df["userID"] == user_id].copy()
 
         user_hybrid = build_hybrid_for_user(
-            tfidf_df=user_tfidf,
-            ohe_df=user_ohe,
+            content_df=user_content,
+            collab_df=user_collab,
             top_n=top_n_per_user,
-            tfidf_weight=tfidf_weight,
-            ohe_weight=ohe_weight,
+            content_weight=content_weight,
+            collab_weight=collab_weight,
             overlap_bonus=overlap_bonus,
         )
 
@@ -282,10 +352,10 @@ def save_hybrid_table(conn, hybrid_df):
             userID INTEGER NOT NULL,
             recommended_movieID INTEGER NOT NULL,
             recommended_title TEXT,
-            tfidf_score REAL NOT NULL,
-            ohe_score REAL NOT NULL,
-            tfidf_score_norm REAL NOT NULL,
-            ohe_score_norm REAL NOT NULL,
+            content_score REAL NOT NULL,
+            collaborative_score REAL NOT NULL,
+            content_score_norm REAL NOT NULL,
+            collaborative_score_norm REAL NOT NULL,
             recommended_by_both INTEGER NOT NULL,
             final_score REAL NOT NULL,
             model_source TEXT NOT NULL,
@@ -365,8 +435,8 @@ def run_validation_queries(conn, top_n_per_user):
             userID,
             recommended_movieID,
             recommended_title,
-            ROUND(tfidf_score, 4) AS tfidf_score,
-            ROUND(ohe_score, 4) AS ohe_score,
+            ROUND(content_score, 4) AS content_score,
+            ROUND(collaborative_score, 4) AS collaborative_score,
             ROUND(final_score, 4) AS final_score,
             model_source,
             final_rank
@@ -389,8 +459,8 @@ def main():
     print_divider()
     print(f"Database path: {DB_PATH}")
     print(f"Top-N recommendations per user: {TOP_N_PER_USER}")
-    print(f"TF-IDF weight: {TFIDF_WEIGHT}")
-    print(f"Genre OHE weight: {OHE_WEIGHT}")
+    print(f"Content weight: {CONTENT_WEIGHT}")
+    print(f"Collaborative weight: {COLLAB_WEIGHT}")
     print(f"Overlap bonus: {OVERLAP_BONUS}")
     print(f"Run started at: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     print()
@@ -406,7 +476,7 @@ def main():
         print("[STEP 2/5] Validating required source tables...")
         required_objects = [
             "user_content_recommendations_top20",
-            "user_content_recommendations_genre_ohe_top20",
+            "user_collaborative_knn_recommendations_top20",
         ]
         missing = [obj for obj in required_objects if not table_exists(conn, obj)]
         if missing:
@@ -415,22 +485,22 @@ def main():
         print()
 
         print("[STEP 3/5] Loading source recommendation tables...")
-        tfidf_df, ohe_df = load_all_model_recommendations(conn)
-        print(f"TF-IDF recommendation rows loaded: {len(tfidf_df):,}")
-        print(f"Genre OHE recommendation rows loaded: {len(ohe_df):,}")
+        content_df, collab_df = load_all_model_recommendations(conn)
+        print(f"Content recommendation rows loaded: {len(content_df):,}")
+        print(f"Collaborative recommendation rows loaded: {len(collab_df):,}")
         print(
             f"Distinct users across both models: "
-            f"{len(sorted(set(tfidf_df['userID']).union(set(ohe_df['userID'])))):,}"
+            f"{len(sorted(set(content_df['userID']).union(set(collab_df['userID'])))):,}"
         )
         print()
 
         print("[STEP 4/5] Building hybrid recommendations...")
         hybrid_df = build_hybrid_recommendation_table(
-            tfidf_df=tfidf_df,
-            ohe_df=ohe_df,
+            content_df=content_df,
+            collab_df=collab_df,
             top_n_per_user=TOP_N_PER_USER,
-            tfidf_weight=TFIDF_WEIGHT,
-            ohe_weight=OHE_WEIGHT,
+            content_weight=CONTENT_WEIGHT,
+            collab_weight=COLLAB_WEIGHT,
             overlap_bonus=OVERLAP_BONUS,
         )
         print(f"Hybrid recommendation rows generated: {len(hybrid_df):,}")
@@ -471,7 +541,7 @@ def main():
         print("HYBRID ROUTER BUILD COMPLETED SUCCESSFULLY")
         print_divider()
         print("Created table: user_hybrid_recommendations_top20")
-        print("This table combines the TF-IDF and genre OHE user recommendation tables.")
+        print("This table combines the content and collaborative user recommendation tables.")
         print(f"Run finished at: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"Total runtime: {duration}")
         print_divider()

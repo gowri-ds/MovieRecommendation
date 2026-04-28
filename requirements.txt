@@ -1,2 +1,6 @@
+# Active runtime dependencies for the simplified GMN recommender apps and pipeline
 flask>=3.1,<4
+numpy>=1.26,<3
 pandas>=2.2,<3
+scikit-learn>=1.4,<2
+sentence-transformers>=3,<4

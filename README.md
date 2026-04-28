@@ -1,127 +1,145 @@
-# GMN Content Recommendation Pipeline
+# GMN Recommendation Pipeline
 
-This project builds and compares several content-based movie recommendation approaches on top of a SQLite database. It includes item similarity models, user-level recommenders, hybrid routing strategies, offline evaluation, SQL support files, and two Flask UI apps.
+This repository contains the final simplified version of the GMN movie recommendation project. The active system has four recommendation layers:
 
-## Project Scope
+- enriched content recommendations
+- collaborative KNN recommendations
+- a hybrid router that combines both signals
+- a logistic like-prediction layer for final scoring
 
-Core workflows:
+The active hybrid experience is exposed through the Flask app `Matrix Matchmakers`.
 
-- TF-IDF movie similarity and user recommendation
-- Genre OHE movie similarity and user recommendation
-- Weighted hybrid router
-- Confidence-based hybrid router
-- Offline evaluation
-- Flask apps for recommendation and similarity lookup
+## Active Project Structure
 
-Database used:
+### Pipeline
 
-- `G:/My Drive/BSAN 780 Analytics Capstone/Final Project/Movies.db`
+- `pipeline/Movie_Recommendation_GMN_PL0_Enrich.py`
+  Adds TMDB metadata and builds enriched feature tables.
+- `pipeline/Movie_Recommendation_GMN_PL2.py`
+  Builds item-item content similarity from enriched text features.
+- `pipeline/Movie_Recommendation_GMN_PL4.py`
+  Builds user-level content recommendations.
+- `pipeline/Movie_Collaborative_Reco_BBA_PL4C.py`
+  Builds user-level collaborative KNN recommendations.
+- `pipeline/Movie_Collaborative_Reco_BBA_PL4D_LeaveOneOut.py`
+  Runs leave-one-out validation for the collaborative model.
+- `pipeline/Movie_Recommendation_GMN_PL6_A_HybridRouter.py`
+  Builds the hybrid recommendation table by blending content and collaborative outputs.
+- `pipeline/Movie_Recommendation_GMN_PL7_Offline_Evaluation.py`
+  Evaluates the active recommenders.
+- `pipeline/Movie_Recommendation_GMN_PL8_A_LogisticLikePredictor.py`
+  Trains the logistic like model and writes final probability-based recommendations.
 
-## Repo Structure
+### SQL
 
-Pipeline scripts:
+- `sql/Movie_Recommendation_GMN_PL1_SQL_Setup.sql`
+- `sql/Movie_Recommendation_GMN_PL4_SQL_Testing_Queries.sql`
+- `sql/Movie_Collaborative_Reco_GMN_PL4C_SQL_Testing_Queries.sql`
+- `sql/Movie_Collaborative_Reco_GMN_PL4D_LeaveOneOut_SQL_Testing_Queries.sql`
+- `sql/Movie_Recommendation_GMN_PL5_A_SQL_Model_Comparison.sql`
+- `sql/Movie_Recommendation_GMN_PL5_B_SQL_Model_Validation.sql`
+- `sql/Movie_Recommendation_GMN_PL8_SQL_Final_Output_Queries.sql`
 
-- `pipeline/Movie_Content_Reco_GMN_PL2.py`
-- `pipeline/Movie_Content_Reco_GMN_PL2B_Genre_OHE.py`
-- `pipeline/Movie_Content_Reco_GMN_PL4.py`
-- `pipeline/Movie_Content_Reco_GMN_PL4B_Genre_OHE.py`
-- `pipeline/Movie_Content_Reco_GMN_PL6_A_HybridRouter.py`
-- `pipeline/Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py`
-- `pipeline/Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py`
+### App Interface
 
-Apps:
+- `apps/Movie_Recommendation_GMN_HybridRouter.py`
+  Matrix Matchmakers hybrid app.
 
-- `apps/Movie_Content_Reco_GMN_App_Purple_Lilac.py`
-- `apps/Movie_Content_Reco_GMN_App_Matrix.py`
-- `apps/Movie_Content_Reco_GMN_App.py`
+### App Support
 
-Docs:
+- `apps/Movie_Recommendation_GMN_HybridRouter_Core.py`
+  Shared hybrid UI logic, recommendation retrieval, and table rendering helpers.
 
-- `docs/Movie_Content_Reco_GMN_Pipeline.md`
-- `docs/Movie_Content_Reco_GMN_Project_Report.md`
-- `docs/Movie_Content_Reco_GMN_Limitations_And_Improvements.md`
-
-SQL:
-
-- `sql/Movie_Content_Reco_GMN_PL1_SQL_Setup.sql`
-- `sql/Movie_Content_Reco_GMN_PL4_SQL_Testing_Queries.sql`
-- `sql/Movie_Content_Reco_GMN_PL5_A_SQL_Model_Comparison.sql`
-- `sql/Movie_Content_Reco_GMN_PL5_B_SQL_Model_Validation.sql`
-- `sql/Movie_Content_Reco_GMN_PL8_SQL_Final_Output_Queries.sql`
-
-Frontend assets:
+### UI Assets
 
 - `templates/`
 - `static/`
 
-## Main Output Tables
+### Documentation
 
-Similarity tables:
+- `docs/Movie_Recommendation_GMN_Project_Report.md`
+- `docs/Movie_Recommendation_GMN_Pipeline.md`
+- `docs/Movie_Recommendation_GMN_Pipeline_Report.md`
+- `docs/Movie_Recommendation_GMN_Limitations_And_Improvements.md`
+- `docs/Movie_Recommendation_GMN_Master_Sheet.md`
 
+## Core Tables
+
+### Content And Enrichment
+
+- `movie_content_clean`
+- `vw_movie_content_features`
+- `movie_metadata_enriched`
+- `vw_movie_content_features_enriched`
 - `movie_content_similarity_top20`
-- `movie_genre_ohe_similarity_top20`
-
-User recommendation tables:
-
 - `user_content_recommendations_top20`
-- `user_content_recommendations_genre_ohe_top20`
+
+### Collaborative
+
+- `user_collaborative_knn_recommendations_top20`
+- `collaborative_knn_leave_one_out_user_results`
+- `collaborative_knn_leave_one_out_summary`
+
+### Hybrid And Evaluation
+
 - `user_hybrid_recommendations_top20`
-- `user_confidence_hybrid_recommendations_top20`
-
-Evaluation tables:
-
 - `recommender_offline_eval_user_results`
 - `recommender_offline_eval_summary`
+- `user_hybrid_logistic_like_predictions_top20`
+- `logistic_like_model_summary`
 
-## How To Run
+## Run Order
 
-Install dependencies:
+1. Run `sql/Movie_Recommendation_GMN_PL1_SQL_Setup.sql`
+2. Run `py pipeline/Movie_Recommendation_GMN_PL0_Enrich.py`
+3. Run `py pipeline/Movie_Recommendation_GMN_PL2.py`
+4. Run `py pipeline/Movie_Recommendation_GMN_PL4.py`
+5. Run `py pipeline/Movie_Collaborative_Reco_BBA_PL4C.py`
+6. Run `py pipeline/Movie_Collaborative_Reco_BBA_PL4D_LeaveOneOut.py`
+7. Run `py pipeline/Movie_Recommendation_GMN_PL6_A_HybridRouter.py`
+8. Run `py pipeline/Movie_Recommendation_GMN_PL7_Offline_Evaluation.py`
+9. Run `py pipeline/Movie_Recommendation_GMN_PL8_A_LogisticLikePredictor.py`
 
-```bash
+## Flask App Launch Command
+
+- `py apps/Movie_Recommendation_GMN_HybridRouter.py`
+
+## Matrix Matchmakers Hybrid Flow
+
+The active hybrid UI uses the following sequence:
+
+- `Choose Your Path`
+- `Define Your Signal`
+- `Choose Your Reality`
+- `Follow the White Rabbit`
+- `The System Has Chosen: Decoded Recommendations`
+
+Reality naming:
+
+- `Blue Pill`: Content Recommendation
+- `Red Pill`: Collaborative Recommendation
+- `Purple Pill`: Hybrid Recommendation
+
+## Config And Dependencies
+
+- `config.py` holds the main project constants and environment-driven overrides.
+- `requirements.txt` contains the active runtime dependencies for the pipeline and Flask apps.
+
+## Optional BERT Setup
+
+If you want to run the semantic content-similarity experiment, install the repo dependencies and then run the BERT pipeline:
+
+```powershell
 py -m pip install -r requirements.txt
+py pipeline/Movie_Recommendation_GMN_PL2_B_BERT_ContentSimilarity.py
 ```
 
-Run the pipeline in this order:
+This creates:
 
-1. `py pipeline/Movie_Content_Reco_GMN_PL2.py`
-2. `py pipeline/Movie_Content_Reco_GMN_PL2B_Genre_OHE.py`
-3. `py pipeline/Movie_Content_Reco_GMN_PL4.py`
-4. `py pipeline/Movie_Content_Reco_GMN_PL4B_Genre_OHE.py`
-5. `py pipeline/Movie_Content_Reco_GMN_PL6_A_HybridRouter.py`
-6. `py pipeline/Movie_Content_Reco_GMN_PL6_B_ConfidenceRouter.py`
-7. `py pipeline/Movie_Content_Reco_GMN_PL7_Offline_Evaluation.py`
+- `movie_content_similarity_bert_top20`
 
-Run the apps:
+Use `sql/Movie_Recommendation_GMN_TFIDF_vs_BERT_SQL_Comparison.sql` to compare the BERT output against the main TF-IDF similarity table.
 
-```bash
-py apps/Movie_Content_Reco_GMN_App_Purple_Lilac.py
-py apps/Movie_Content_Reco_GMN_App_Matrix.py
-```
+## Archived Material
 
-Then open:
-
-- `http://127.0.0.1:5000`
-
-## Evaluation Snapshot
-
-Latest offline evaluation summary:
-
-- eligible users: `603`
-- `genre_ohe_model`: hit rate@10 = `0.0100`
-- `confidence_hybrid_router`: hit rate@10 = `0.0083`
-- `tfidf_model`: hit rate@10 = `0.0050`
-- `weighted_hybrid_router`: hit rate@10 = `0.0033`
-
-Quick interpretation:
-
-- Genre OHE performed best on this leave-one-out test.
-- The confidence hybrid router outperformed the weighted hybrid router.
-- Overall hit rates are low, so the system is functional but still limited in predictive accuracy.
-
-## Further Documentation
-
-For deeper detail, see:
-
-- [Pipeline Walkthrough](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/docs/Movie_Content_Reco_GMN_Pipeline.md)
-- [Project Report](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/docs/Movie_Content_Reco_GMN_Project_Report.md)
-- [Evaluation, Limitations, and Improvements](/c:/Users/ngowr/Coding%20Projects/GMN_Content_Reco/docs/Movie_Content_Reco_GMN_Limitations_And_Improvements.md)
+Older or non-current artifacts are kept under `archive/` rather than being treated as part of the active project flow. That includes the retired content and collaborative interface files, plus the root-level BBA prototype scripts once their pipeline equivalents are in place.

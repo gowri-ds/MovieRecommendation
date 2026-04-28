@@ -4,9 +4,10 @@
 CONTENT-BASED RECOMMENDER BUILD SCRIPT
 ========================================================================
 Purpose:
-    This script reads the cleaned movie feature layer from SQLite,
-    builds a TF-IDF based content similarity model, and writes the
-    Top-20 most similar movies for every movie back into the database.
+    This script reads the movie feature layer from SQLite, prefers the
+    TMDB-enriched content view when available, builds a TF-IDF based
+    content similarity model, and writes the Top-20 most similar movies
+    for every movie back into the database.
 
 What this script creates:
     Table: movie_content_similarity_top20
@@ -28,8 +29,9 @@ Why this is useful:
 
 Before running:
     Make sure your master SQL build has already created:
-        - movie_content_clean
+        - vw_movie_content_features_enriched (preferred)
         - vw_movie_content_features
+        - movie_content_clean
 
 Python packages needed:
     - pandas
@@ -45,13 +47,14 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 
+from config import DB_PATH
+
 # ---------------------------------------------------------------------
 # USER SETTINGS
 # ---------------------------------------------------------------------
 # Update TOP_N if you want more or fewer similar movies per movie.
 # For your current design, 20 is a strong default.
 # ---------------------------------------------------------------------
-DB_PATH = r"G:/My Drive/BSAN 780 Analytics Capstone/Final Project/Movies.db"
 TOP_N = 20
 
 
@@ -67,12 +70,13 @@ def print_divider(char="=", width=72):
 # ---------------------------------------------------------------------
 # HELPER FUNCTION: FIND THE CORRECT SOURCE OBJECT
 # Why this exists:
-#   combined_text should normally live in vw_movie_content_features.
-#   This function checks for that first.
-#   If not found, it tries movie_content_clean as a backup.
+#   combined_text should normally live in vw_movie_content_features_enriched.
+#   If the enrichment view is not available yet, fall back to the base
+#   feature view and then to movie_content_clean as a last resort.
 # ---------------------------------------------------------------------
 def get_source_table_or_view(conn):
     checks = [
+        ("vw_movie_content_features_enriched", "combined_text"),
         ("vw_movie_content_features", "combined_text"),
         ("movie_content_clean", "combined_text"),
     ]
@@ -90,7 +94,8 @@ def get_source_table_or_view(conn):
 
     raise ValueError(
         "Could not find a usable source with combined_text. "
-        "Expected vw_movie_content_features or movie_content_clean."
+        "Expected vw_movie_content_features_enriched, "
+        "vw_movie_content_features, or movie_content_clean."
     )
 
 
