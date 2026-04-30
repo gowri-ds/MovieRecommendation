@@ -1,6 +1,6 @@
 """
 ========================================================================
-USER-LEVEL COLLABORATIVE KNN ITEM-ITEM RECOMMENDATION BUILD SCRIPT
+USER-LEVEL COLLABORATIVE KNN USER-USER RECOMMENDATION BUILD SCRIPT
 ========================================================================
 Purpose:
     This pipeline version operationalizes Burcu's collaborative
@@ -14,12 +14,12 @@ Logic:
         Load user ratings from user_movie_interactions.
 
     Step 2:
-        Build a user-item matrix and fit an item-item nearest-neighbor
-        model using cosine distance.
+        Build a user-item matrix, mean-center each user's ratings,
+        and compute user-user cosine similarity.
 
     Step 3:
-        For each user, look at movies they rated highly and gather
-        candidate neighbors from similar items they have not seen.
+        For each user, look at the Top-K most similar users and gather
+        movies they rated highly that the target user has not seen.
 
     Step 4:
         Aggregate weighted scores and keep the Top-N recommendations.
@@ -31,18 +31,24 @@ Why this is useful:
 """
 
 import sqlite3
+import sys
 import traceback
 from datetime import datetime
+from pathlib import Path
 
+import numpy as np
 import pandas as pd
-from scipy.sparse import csr_matrix
-from sklearn.neighbors import NearestNeighbors
+from sklearn.metrics.pairwise import cosine_similarity
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from config import DB_PATH
 
 LIKED_RATING_THRESHOLD = 4.0
 TOP_N_PER_USER = 20
-K_NEIGHBORS = 9
+K_NEIGHBORS = 17
 
 
 def print_divider(char="=", width=72):
@@ -76,37 +82,55 @@ def load_ratings(conn):
     return pd.read_sql_query(query, conn)
 
 
-def build_item_neighbors(ratings_df, k_neighbors):
+def build_user_neighbors(ratings_df):
     pivot = ratings_df.pivot(index="userID", columns="movieID", values="rating").fillna(0.0)
-    ratings_sparse = csr_matrix(pivot.values)
+    ratings_matrix = pivot.values.astype(float)
 
-    item_model = NearestNeighbors(
-        n_neighbors=k_neighbors + 1,
-        metric="cosine",
-        algorithm="brute",
+    counts = (ratings_matrix != 0).sum(axis=1)
+    user_means = np.divide(
+        ratings_matrix.sum(axis=1),
+        counts,
+        where=counts != 0,
+        out=np.zeros_like(counts, dtype=float),
     )
-    item_model.fit(ratings_sparse.T)
 
-    distances, indices = item_model.kneighbors(ratings_sparse.T)
+    ratings_centered = ratings_matrix - user_means[:, None]
+    ratings_centered[ratings_matrix == 0] = 0.0
 
-    movie_ids = list(pivot.columns)
-    movie_id_to_col = {movie_id: idx for idx, movie_id in enumerate(movie_ids)}
-    col_to_movie_id = {idx: movie_id for idx, movie_id in enumerate(movie_ids)}
-    user_ids = list(pivot.index)
-    user_id_to_row = {user_id: idx for idx, user_id in enumerate(user_ids)}
+    cos_sim_matrix = cosine_similarity(ratings_centered, ratings_centered)
+    np.fill_diagonal(cos_sim_matrix, 0.0)
+    sorted_neighbors = np.argsort(cos_sim_matrix, axis=1)[:, ::-1]
 
     return {
         "pivot": pivot,
-        "distances": distances,
-        "indices": indices,
-        "movie_id_to_col": movie_id_to_col,
-        "col_to_movie_id": col_to_movie_id,
-        "user_ids": user_ids,
-        "user_id_to_row": user_id_to_row,
+        "ratings_matrix": ratings_matrix,
+        "ratings_centered": ratings_centered,
+        "cos_sim_matrix": cos_sim_matrix,
+        "sorted_neighbors": sorted_neighbors,
+        "movie_ids": list(pivot.columns),
+        "user_ids": list(pivot.index),
+        "user_id_to_row": {user_id: idx for idx, user_id in enumerate(pivot.index)},
+        "movie_id_to_col": {movie_id: idx for idx, movie_id in enumerate(pivot.columns)},
     }
 
 
-def build_user_recommendations(ratings_df, model_parts, top_n_per_user):
+def _empty_recommendation_frame():
+    return pd.DataFrame(
+        columns=[
+            "userID",
+            "recommended_movieID",
+            "recommended_title",
+            "recommendation_score",
+            "supporting_liked_movies",
+            "avg_supporting_rating",
+            "recommendation_rank",
+            "support_movie_ids",
+            "support_movie_titles",
+        ]
+    )
+
+
+def build_user_recommendations(ratings_df, model_parts, top_n_per_user, k_neighbors):
     title_map = (
         ratings_df[["movieID", "title"]]
         .drop_duplicates(subset=["movieID"])
@@ -114,17 +138,16 @@ def build_user_recommendations(ratings_df, model_parts, top_n_per_user):
         .to_dict()
     )
 
-    distances = model_parts["distances"]
-    indices = model_parts["indices"]
-    movie_id_to_col = model_parts["movie_id_to_col"]
-    col_to_movie_id = model_parts["col_to_movie_id"]
+    ratings_matrix = model_parts["ratings_matrix"]
+    cos_sim_matrix = model_parts["cos_sim_matrix"]
+    sorted_neighbors = model_parts["sorted_neighbors"]
+    movie_ids = model_parts["movie_ids"]
     user_id_to_row = model_parts["user_id_to_row"]
 
     recommendation_rows = []
 
     for user_id, user_group in ratings_df.groupby("userID", sort=True):
         user_row_idx = user_id_to_row[user_id]
-        _ = model_parts["pivot"].iloc[user_row_idx]
         seen_movie_ids = set(user_group["movieID"])
 
         liked_df = (
@@ -137,43 +160,38 @@ def build_user_recommendations(ratings_df, model_parts, top_n_per_user):
             continue
 
         candidate_scores = {}
+        top_k_user_indices = sorted_neighbors[user_row_idx][:k_neighbors]
 
-        for liked_row in liked_df.itertuples(index=False):
-            source_movie_id = liked_row.movieID
-            source_rating = float(liked_row.rating)
-            source_title = liked_row.title
-            source_col_idx = movie_id_to_col.get(source_movie_id)
-
-            if source_col_idx is None:
+        for neighbor_row_idx in top_k_user_indices:
+            similarity = float(cos_sim_matrix[user_row_idx, neighbor_row_idx])
+            if similarity <= 0:
                 continue
 
-            neighbor_indices = indices[source_col_idx]
-            neighbor_distances = distances[source_col_idx]
+            neighbor_ratings = ratings_matrix[neighbor_row_idx]
+            neighbor_user_id = model_parts["user_ids"][neighbor_row_idx]
+            neighbor_high_movie_indices = np.where(
+                neighbor_ratings >= LIKED_RATING_THRESHOLD
+            )[0]
 
-            for neighbor_col_idx, neighbor_distance in zip(neighbor_indices[1:], neighbor_distances[1:]):
-                candidate_movie_id = col_to_movie_id[neighbor_col_idx]
+            for movie_col_idx in neighbor_high_movie_indices:
+                candidate_movie_id = movie_ids[movie_col_idx]
                 if candidate_movie_id in seen_movie_ids:
                     continue
 
-                similarity = 1.0 - float(neighbor_distance)
-                if similarity <= 0:
-                    continue
-
+                rating = float(neighbor_ratings[movie_col_idx])
                 candidate_entry = candidate_scores.setdefault(
                     candidate_movie_id,
                     {
                         "recommended_title": title_map.get(candidate_movie_id, ""),
                         "recommendation_score": 0.0,
-                        "support_movie_ids": set(),
-                        "support_movie_titles": set(),
+                        "supporting_neighbors": set(),
                         "support_ratings": [],
                     },
                 )
 
-                candidate_entry["recommendation_score"] += similarity * source_rating
-                candidate_entry["support_movie_ids"].add(source_movie_id)
-                candidate_entry["support_movie_titles"].add(source_title)
-                candidate_entry["support_ratings"].append(source_rating)
+                candidate_entry["recommendation_score"] += similarity * rating
+                candidate_entry["supporting_neighbors"].add(int(neighbor_user_id))
+                candidate_entry["support_ratings"].append(rating)
 
         if not candidate_scores:
             continue
@@ -182,26 +200,36 @@ def build_user_recommendations(ratings_df, model_parts, top_n_per_user):
             candidate_scores.items(),
             key=lambda item: (
                 -item[1]["recommendation_score"],
-                -len(item[1]["support_movie_ids"]),
+                -len(item[1]["supporting_neighbors"]),
                 item[1]["recommended_title"] or "",
             ),
         )[:top_n_per_user]
 
-        for recommendation_rank, (candidate_movie_id, rec_info) in enumerate(ranked_candidates, start=1):
+        for recommendation_rank, (candidate_movie_id, rec_info) in enumerate(
+            ranked_candidates, start=1
+        ):
             support_ratings = rec_info["support_ratings"]
+            supporting_neighbor_ids = sorted(rec_info["supporting_neighbors"])
             recommendation_rows.append(
                 {
                     "userID": user_id,
                     "recommended_movieID": candidate_movie_id,
                     "recommended_title": rec_info["recommended_title"],
                     "recommendation_score": round(rec_info["recommendation_score"], 6),
-                    "supporting_liked_movies": len(rec_info["support_movie_ids"]),
-                    "avg_supporting_rating": round(sum(support_ratings) / len(support_ratings), 4),
+                    "supporting_liked_movies": len(supporting_neighbor_ids),
+                    "avg_supporting_rating": round(
+                        sum(support_ratings) / len(support_ratings), 4
+                    ),
                     "recommendation_rank": recommendation_rank,
-                    "support_movie_ids": ", ".join(map(str, sorted(rec_info["support_movie_ids"]))),
-                    "support_movie_titles": ", ".join(sorted(rec_info["support_movie_titles"])),
+                    "support_movie_ids": ", ".join(map(str, supporting_neighbor_ids)),
+                    "support_movie_titles": ", ".join(
+                        f"user {neighbor_id}" for neighbor_id in supporting_neighbor_ids
+                    ),
                 }
             )
+
+    if not recommendation_rows:
+        return _empty_recommendation_frame()
 
     return pd.DataFrame(
         recommendation_rows,
@@ -299,7 +327,9 @@ def run_validation_queries(conn, top_n_per_user):
             ROUND(recommendation_score, 4) AS recommendation_score,
             supporting_liked_movies,
             ROUND(avg_supporting_rating, 2) AS avg_supporting_rating,
-            recommendation_rank
+            recommendation_rank,
+            support_movie_ids,
+            support_movie_titles
         FROM user_collaborative_knn_recommendations_top20
         WHERE userID = 1
         ORDER BY recommendation_rank
@@ -315,12 +345,12 @@ def main():
     start_time = datetime.now()
 
     print_divider()
-    print("STARTING USER-LEVEL COLLABORATIVE KNN ITEM-ITEM BUILD")
+    print("STARTING USER-LEVEL COLLABORATIVE KNN USER-USER BUILD")
     print_divider()
     print(f"Database path: {DB_PATH}")
     print(f"Liked rating threshold: {LIKED_RATING_THRESHOLD}")
     print(f"Top-N recommendations per user: {TOP_N_PER_USER}")
-    print(f"K neighbors per liked movie: {K_NEIGHBORS}")
+    print(f"K similar users per target user: {K_NEIGHBORS}")
     print(f"Run started at: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     print()
 
@@ -344,58 +374,52 @@ def main():
         print(f"Distinct users: {ratings_df['userID'].nunique():,}")
         print(f"Distinct movies: {ratings_df['movieID'].nunique():,}\n")
 
-        print("[STEP 4/6] Fitting item-item KNN model...")
-        model_parts = build_item_neighbors(ratings_df, K_NEIGHBORS)
-        print("Success: KNN model built.\n")
+        print("[STEP 4/6] Building user-user similarity artifacts...")
+        model_parts = build_user_neighbors(ratings_df)
+        print("Success: Similar users computed.\n")
 
         print("[STEP 5/6] Building user-level recommendations...")
         rec_df = build_user_recommendations(
             ratings_df=ratings_df,
             model_parts=model_parts,
             top_n_per_user=TOP_N_PER_USER,
+            k_neighbors=K_NEIGHBORS,
         )
-        print(f"Success: Built {len(rec_df):,} recommendation rows.\n")
+        print(f"Recommendation rows built: {len(rec_df):,}\n")
 
-        print("[STEP 6/6] Writing results to SQLite...")
+        print("[STEP 6/6] Saving output table and validating results...")
         save_user_recommendation_table(conn, rec_df)
-        print("Success: Collaborative recommendation table created and indexed.\n")
-
-        print_divider("-")
-        print("VALIDATION")
-        print_divider("-")
-        summary_df, per_user_counts_df, sample_df = run_validation_queries(conn, TOP_N_PER_USER)
-
-        print("Summary:")
+        summary_df, per_user_counts_df, sample_df = run_validation_queries(
+            conn, TOP_N_PER_USER
+        )
+        print("Output summary:")
         print(summary_df.to_string(index=False))
         print()
 
         if per_user_counts_df.empty:
-            print(f"Success: Every user has exactly {TOP_N_PER_USER} recommendations.")
+            print("All users with recommendations received the expected Top-N rows.\n")
         else:
-            print("Note: Some users have fewer than the requested Top-N recommendations.")
+            print("Users with fewer or more than the expected Top-N rows:")
             print(per_user_counts_df.to_string(index=False))
-        print()
+            print()
 
         print("Sample recommendations for userID = 1:")
-        if sample_df.empty:
-            print("No recommendations found for userID = 1.")
-        else:
-            print(sample_df.to_string(index=False))
+        print(sample_df.to_string(index=False))
         print()
 
         end_time = datetime.now()
-        elapsed = end_time - start_time
+        duration = end_time - start_time
         print_divider()
-        print("PIPELINE STEP COMPLETE")
+        print("COLLABORATIVE BUILD COMPLETED SUCCESSFULLY")
         print_divider()
-        print(f"Completed at: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"Elapsed time: {elapsed}")
         print("Output table: user_collaborative_knn_recommendations_top20")
+        print(f"Completed at: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Elapsed time: {duration}")
         print_divider()
 
     except Exception as exc:
         print_divider("!")
-        print("PIPELINE FAILED")
+        print("COLLABORATIVE BUILD FAILED")
         print_divider("!")
         print(f"Error: {exc}")
         print()

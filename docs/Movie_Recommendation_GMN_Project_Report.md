@@ -47,7 +47,7 @@ Main outputs:
 
 ## Collaborative Recommendation Branch
 
-The collaborative branch uses user behavior directly through an item-item KNN approach. This branch is especially useful where co-consumption patterns reveal relationships that do not appear in metadata alone.
+The collaborative branch uses user behavior directly through a user-user KNN approach with mean-centered ratings and cosine similarity. This branch is especially useful where similar-user behavior reveals relationships that do not appear in metadata alone.
 
 Main outputs:
 
@@ -62,6 +62,12 @@ The hybrid router combines the content and collaborative tables into one ranked 
 - normalized content score
 - normalized collaborative score
 - an overlap bonus when both models recommend the same movie
+
+The active fixed settings in the final pipeline are:
+
+- content weight = `0.45`
+- collaborative weight = `0.55`
+- overlap bonus = `0.08`
 
 Main output:
 

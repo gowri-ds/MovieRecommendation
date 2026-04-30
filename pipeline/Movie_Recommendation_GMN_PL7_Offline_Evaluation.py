@@ -19,24 +19,36 @@ What this script creates:
 
 import math
 import sqlite3
+import sys
 import traceback
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from config import DB_PATH
-from Movie_Recommendation_GMN_PL6_A_HybridRouter import build_hybrid_for_user
+
+try:
+    from Movie_Collaborative_Reco_BBA_PL4C import build_user_neighbors
+    from Movie_Recommendation_GMN_PL6_A_HybridRouter import build_hybrid_for_user
+except ModuleNotFoundError:
+    from pipeline.Movie_Collaborative_Reco_BBA_PL4C import build_user_neighbors
+    from pipeline.Movie_Recommendation_GMN_PL6_A_HybridRouter import build_hybrid_for_user
 
 LIKE_THRESHOLD = 4.0
 MIN_LIKED_MOVIES = 5
 TOP_K = 10
 MODEL_TOP_N = 20
 
-TFIDF_WEIGHT = 0.7
-COLLAB_WEIGHT = 0.3
-OVERLAP_BONUS = 0.05
+TFIDF_WEIGHT = 0.45
+COLLAB_WEIGHT = 0.55
+OVERLAP_BONUS = 0.08
 
-COLLAB_K_NEIGHBORS = 11
+COLLAB_K_NEIGHBORS = 17
 
 
 def print_divider(char="=", width=72):
@@ -102,33 +114,7 @@ def build_collaborative_artifacts(interactions_df):
         .rename(columns={"rating_value": "rating"})
         .copy()
     )
-    pivot = ratings_df.pivot(index="userID", columns="movieID", values="rating").fillna(0.0)
-    ratings_matrix = pivot.values
-
-    # Cosine similarity over item columns, matching the collaborative tuning step.
-    item_matrix = ratings_matrix.T
-    item_sim = item_matrix @ item_matrix.T
-    item_norms = ((item_matrix ** 2).sum(axis=1) ** 0.5)
-    denom = item_norms[:, None] * item_norms[None, :]
-    cos_sim_matrix = item_sim / denom
-    cos_sim_matrix[~(cos_sim_matrix == cos_sim_matrix)] = 0.0
-    cos_sim_matrix[denom == 0] = 0.0
-
-    for idx in range(len(cos_sim_matrix)):
-        cos_sim_matrix[idx, idx] = 0.0
-
-    sorted_neighbors = cos_sim_matrix.argsort(axis=1)[:, ::-1]
-
-    return {
-        "pivot": pivot,
-        "ratings_matrix": ratings_matrix,
-        "cos_sim_matrix": cos_sim_matrix,
-        "sorted_neighbors": sorted_neighbors,
-        "movie_ids": list(pivot.columns),
-        "user_ids": list(pivot.index),
-        "user_id_to_row": {user_id: idx for idx, user_id in enumerate(pivot.index)},
-        "movie_id_to_col": {movie_id: idx for idx, movie_id in enumerate(pivot.columns)},
-    }
+    return build_user_neighbors(ratings_df)
 
 
 def build_collaborative_recommendations_for_user(
@@ -158,53 +144,54 @@ def build_collaborative_recommendations_for_user(
     user_row_idx = collaborative_artifacts["user_id_to_row"][user_id]
     user_ratings = collaborative_artifacts["ratings_matrix"][user_row_idx]
     temp_user = user_ratings.copy()
-
     holdout_col_idx = collaborative_artifacts["movie_id_to_col"].get(holdout_movie_id)
     if holdout_col_idx is not None:
         temp_user[holdout_col_idx] = 0.0
 
-    visible_movies = [idx for idx in (temp_user >= like_threshold).nonzero()[0]]
-    rated_movies = set((temp_user >= 0.5).nonzero()[0])
+    rated_movie_ids = {
+        int(collaborative_artifacts["movie_ids"][movie_idx])
+        for movie_idx in (temp_user >= 0.5).nonzero()[0]
+    }
 
     movie_scores = {}
+    top_k_user_indices = collaborative_artifacts["sorted_neighbors"][user_row_idx][:k_neighbors]
 
-    for movie_idx in visible_movies:
-        sim_scores = collaborative_artifacts["cos_sim_matrix"][movie_idx]
-        top_k_neighbors = collaborative_artifacts["sorted_neighbors"][movie_idx][:k_neighbors]
+    for neighbor_row_idx in top_k_user_indices:
+        similarity = float(
+            collaborative_artifacts["cos_sim_matrix"][user_row_idx, neighbor_row_idx]
+        )
+        if similarity <= 0:
+            continue
 
-        for neighbor_movie_idx in top_k_neighbors:
-            if neighbor_movie_idx in rated_movies:
+        neighbor_ratings = collaborative_artifacts["ratings_matrix"][neighbor_row_idx]
+        neighbor_user_id = collaborative_artifacts["user_ids"][neighbor_row_idx]
+        neighbor_high_movie_indices = (neighbor_ratings >= like_threshold).nonzero()[0]
+
+        for movie_idx in neighbor_high_movie_indices:
+            candidate_movie_id = int(collaborative_artifacts["movie_ids"][movie_idx])
+            if candidate_movie_id in rated_movie_ids:
                 continue
 
-            similarity = float(sim_scores[neighbor_movie_idx])
-            if similarity <= 0:
-                continue
-
-            candidate_movie_id = collaborative_artifacts["movie_ids"][neighbor_movie_idx]
-            source_movie_id = collaborative_artifacts["movie_ids"][movie_idx]
-            rating = float(temp_user[movie_idx])
-
+            rating = float(neighbor_ratings[movie_idx])
             candidate_entry = movie_scores.setdefault(
                 candidate_movie_id,
                 {
                     "recommended_title": title_lookup.get(candidate_movie_id, ""),
-                    "recommendation_score": 0.0,
-                    "support_movie_ids": set(),
-                    "support_movie_titles": set(),
+                    "support_neighbors": set(),
                     "support_ratings": [],
+                    "recommendation_score": 0.0,
                 },
             )
 
             candidate_entry["recommendation_score"] += similarity * rating
-            candidate_entry["support_movie_ids"].add(source_movie_id)
-            candidate_entry["support_movie_titles"].add(title_lookup.get(source_movie_id, ""))
+            candidate_entry["support_neighbors"].add(int(neighbor_user_id))
             candidate_entry["support_ratings"].append(rating)
 
     ranked_movies = sorted(
         movie_scores.items(),
         key=lambda item: (
             -item[1]["recommendation_score"],
-            -len(item[1]["support_movie_ids"]),
+            -len(item[1]["support_neighbors"]),
             item[1]["recommended_title"],
         ),
     )[:top_n]
@@ -218,11 +205,13 @@ def build_collaborative_recommendations_for_user(
                 "recommended_movieID": candidate_movie_id,
                 "recommended_title": rec_info["recommended_title"],
                 "recommendation_score": round(rec_info["recommendation_score"], 6),
-                "supporting_liked_movies": len(rec_info["support_movie_ids"]),
+                "supporting_liked_movies": len(rec_info["support_neighbors"]),
                 "avg_supporting_rating": round(sum(support_ratings) / len(support_ratings), 4),
                 "recommendation_rank": recommendation_rank,
-                "support_movie_ids": ", ".join(map(str, sorted(rec_info["support_movie_ids"]))),
-                "support_movie_titles": ", ".join(sorted(title for title in rec_info["support_movie_titles"] if title)),
+                "support_movie_ids": ", ".join(map(str, sorted(rec_info["support_neighbors"]))),
+                "support_movie_titles": ", ".join(
+                    f"user {neighbor_id}" for neighbor_id in sorted(rec_info["support_neighbors"])
+                ),
             }
         )
 

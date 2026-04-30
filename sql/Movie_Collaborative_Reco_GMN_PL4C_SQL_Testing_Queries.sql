@@ -1,6 +1,6 @@
 /*
 ========================================================================
-COLLABORATIVE KNN ITEM-ITEM SQL TESTING QUERIES
+COLLABORATIVE KNN USER-USER SQL TESTING QUERIES
 ========================================================================
 Purpose:
     Validate and inspect the output of the collaborative recommendation
@@ -90,7 +90,7 @@ LIMIT 20;
 
 
 /*
-Query 7: Explain why recommendations were generated for userID = 1
+Query 7: Explain which similar users supported recommendations for userID = 1
 */
 SELECT
     userID,

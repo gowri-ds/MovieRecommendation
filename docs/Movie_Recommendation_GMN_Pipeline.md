@@ -73,7 +73,7 @@ Files:
 
 Purpose:
 
-- generate item-item collaborative recommendations
+- generate user-user collaborative recommendations
 - validate collaborative performance using leave-one-out evaluation
 
 Key outputs:

@@ -22,8 +22,10 @@ Important note:
 """
 
 import sqlite3
+import sys
 import traceback
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -32,6 +34,10 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_a
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from config import DB_PATH
 

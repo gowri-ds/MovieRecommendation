@@ -1,6 +1,6 @@
 """
 ========================================================================
-COLLABORATIVE KNN ITEM-ITEM LEAVE-ONE-OUT TUNING SCRIPT
+COLLABORATIVE KNN USER-USER LEAVE-ONE-OUT TUNING SCRIPT
 ========================================================================
 Purpose:
     This pipeline version turns Burcu's BBA leave-one-out tuning logic
@@ -12,7 +12,7 @@ What this script creates:
 
 Evaluation design:
     - For each eligible user, hold out one liked movie
-    - Rebuild recommendations from the remaining liked movies
+    - Rebuild recommendations from the remaining user profile
     - Check whether the held-out movie appears in the top-N list
     - Repeat for multiple K neighbor settings
 
@@ -28,12 +28,24 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics.pairwise import cosine_similarity
 
-from Movie_Collaborative_Reco_BBA_PL4C import DB_PATH, LIKED_RATING_THRESHOLD, load_ratings
+try:
+    from Movie_Collaborative_Reco_BBA_PL4C import (
+        DB_PATH,
+        LIKED_RATING_THRESHOLD,
+        build_user_neighbors,
+        load_ratings,
+    )
+except ModuleNotFoundError:
+    from pipeline.Movie_Collaborative_Reco_BBA_PL4C import (
+        DB_PATH,
+        LIKED_RATING_THRESHOLD,
+        build_user_neighbors,
+        load_ratings,
+    )
 
 
-K_VALUES = [1, 3, 5, 7, 9, 11]
+K_VALUES = [1, 3, 5, 7, 9, 11, 17]
 TOP_N = 5
 MIN_LIKED_MOVIES = 2
 RANDOM_SEED = 42
@@ -52,24 +64,6 @@ def table_exists(conn, object_name):
     """
     row = conn.execute(query, (object_name,)).fetchone()
     return row is not None
-
-
-def build_rating_artifacts(ratings_df):
-    pivot = ratings_df.pivot(index="userID", columns="movieID", values="rating").fillna(0.0)
-    ratings_matrix = pivot.values
-
-    cos_sim_matrix = cosine_similarity(ratings_matrix.T, ratings_matrix.T)
-    np.fill_diagonal(cos_sim_matrix, 0.0)
-    sorted_neighbors = np.argsort(cos_sim_matrix, axis=1)[:, ::-1]
-
-    return {
-        "pivot": pivot,
-        "ratings_matrix": ratings_matrix,
-        "cos_sim_matrix": cos_sim_matrix,
-        "sorted_neighbors": sorted_neighbors,
-        "movie_ids": list(pivot.columns),
-        "user_ids": list(pivot.index),
-    }
 
 
 def evaluate_k_values(ratings_df, artifacts, k_values, top_n, min_liked_movies, random_seed):
@@ -92,48 +86,56 @@ def evaluate_k_values(ratings_df, artifacts, k_values, top_n, min_liked_movies, 
 
     for user_row_idx, user_id in enumerate(user_ids):
         user_ratings = ratings_matrix[user_row_idx]
-        fav_movies = np.where(user_ratings >= LIKED_RATING_THRESHOLD)[0]
+        liked_movie_indices = np.where(user_ratings >= LIKED_RATING_THRESHOLD)[0]
 
-        if len(fav_movies) < min_liked_movies:
+        if len(liked_movie_indices) < min_liked_movies:
             continue
 
-        holdout_movie_idx = int(rng.choice(fav_movies))
+        holdout_movie_idx = int(rng.choice(liked_movie_indices))
         holdout_movie_id = int(movie_ids[holdout_movie_idx])
         holdout_title = title_lookup.get(holdout_movie_id, "")
 
         temp_user = user_ratings.copy()
         temp_user[holdout_movie_idx] = 0.0
-
-        visible_movies = np.where(temp_user >= LIKED_RATING_THRESHOLD)[0]
-        rated_movies = set(np.where(temp_user >= 0.5)[0])
+        rated_movie_ids = {
+            int(movie_ids[movie_idx]) for movie_idx in np.where(temp_user >= 0.5)[0]
+        }
 
         for k_neighbors in k_values:
             movie_scores = {}
+            top_k_user_indices = sorted_neighbors[user_row_idx][:k_neighbors]
 
-            for movie_idx in visible_movies:
-                sim_scores = cos_sim_matrix[movie_idx]
-                top_k_neighbors = sorted_neighbors[movie_idx][:k_neighbors]
+            for neighbor_row_idx in top_k_user_indices:
+                similarity = float(cos_sim_matrix[user_row_idx, neighbor_row_idx])
+                if similarity <= 0:
+                    continue
 
-                for neighbor_movie_idx in top_k_neighbors:
-                    if neighbor_movie_idx in rated_movies:
+                neighbor_ratings = ratings_matrix[neighbor_row_idx]
+                neighbor_high_movie_indices = np.where(
+                    neighbor_ratings >= LIKED_RATING_THRESHOLD
+                )[0]
+
+                for movie_idx in neighbor_high_movie_indices:
+                    candidate_movie_id = int(movie_ids[movie_idx])
+                    if candidate_movie_id in rated_movie_ids:
                         continue
 
-                    similarity = float(sim_scores[neighbor_movie_idx])
-                    if similarity <= 0:
-                        continue
-
-                    rating = float(temp_user[movie_idx])
-                    movie_scores[neighbor_movie_idx] = (
-                        movie_scores.get(neighbor_movie_idx, 0.0) + similarity * rating
+                    rating = float(neighbor_ratings[movie_idx])
+                    movie_scores[candidate_movie_id] = (
+                        movie_scores.get(candidate_movie_id, 0.0) + similarity * rating
                     )
 
-            ranked_movies = sorted(movie_scores.items(), key=lambda item: item[1], reverse=True)
-            top_n_movie_indices = [movie_idx for movie_idx, _ in ranked_movies[:top_n]]
+            ranked_movie_ids = [
+                movie_id
+                for movie_id, _ in sorted(
+                    movie_scores.items(), key=lambda item: item[1], reverse=True
+                )[:top_n]
+            ]
 
-            hit = int(holdout_movie_idx in top_n_movie_indices)
+            hit = int(holdout_movie_id in ranked_movie_ids)
             hit_rank = None
             if hit:
-                hit_rank = top_n_movie_indices.index(holdout_movie_idx) + 1
+                hit_rank = ranked_movie_ids.index(holdout_movie_id) + 1
 
             user_results.append(
                 {
@@ -219,7 +221,7 @@ def main():
     start_time = datetime.now()
 
     print_divider()
-    print("STARTING COLLABORATIVE KNN LEAVE-ONE-OUT TUNING")
+    print("STARTING COLLABORATIVE KNN USER-USER LEAVE-ONE-OUT TUNING")
     print_divider()
     print(f"Database path: {DB_PATH}")
     print(f"Like threshold: {LIKED_RATING_THRESHOLD}")
@@ -250,8 +252,8 @@ def main():
         print(f"Distinct users: {ratings_df['userID'].nunique():,}")
         print(f"Distinct movies: {ratings_df['movieID'].nunique():,}\n")
 
-        print("[STEP 4/6] Building item-item similarity artifacts...")
-        artifacts = build_rating_artifacts(ratings_df)
+        print("[STEP 4/6] Building user-user similarity artifacts...")
+        artifacts = build_user_neighbors(ratings_df)
         print("Success: Similarity matrix and neighbor order built.\n")
 
         print("[STEP 5/6] Running leave-one-out tuning across K values...")

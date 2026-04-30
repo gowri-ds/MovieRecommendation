@@ -35,11 +35,17 @@ Python packages needed:
 """
 
 import sqlite3
+import sys
 import traceback
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from config import DB_PATH
 
