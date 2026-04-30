@@ -1,6 +1,11 @@
+import sys
 from pathlib import Path
 
 from flask import Flask
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from Movie_Recommendation_GMN_HybridRouter_Core import (
     HYBRID_APP_MODEL_CONFIGS,
@@ -8,8 +13,6 @@ from Movie_Recommendation_GMN_HybridRouter_Core import (
     render_recommendation_app,
 )
 from config import FLASK_DEBUG, HYBRID_APP_TITLE
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 app = Flask(
     __name__,

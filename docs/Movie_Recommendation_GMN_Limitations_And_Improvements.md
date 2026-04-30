@@ -16,6 +16,12 @@ The collaborative KNN model performs best when the interaction matrix is dense e
 
 The hybrid branch currently uses a weighted blend plus an overlap bonus. That makes the system interpretable, but it is still hand-tuned rather than learned from evaluation targets.
 
+The active final defaults are:
+
+- content weight = `0.45`
+- collaborative weight = `0.55`
+- overlap bonus = `0.08`
+
 ### 4. Evaluation Scope Is Still Baseline-Level
 
 The current offline evaluation is useful for model comparison, but it is still a baseline framework. It does not yet represent a broader production-grade experimentation setup with richer ranking metrics, calibration checks, or business-level constraints.

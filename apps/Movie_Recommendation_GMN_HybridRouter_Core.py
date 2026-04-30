@@ -1,9 +1,5 @@
-import html
-import re
 import sqlite3
 from functools import lru_cache
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 import pandas as pd
 from flask import render_template, request
@@ -11,13 +7,6 @@ from flask import render_template, request
 from config import DB_PATH, DEFAULT_TOP_N
 
 FALLBACK_MIN_RATING_COUNT = 50
-REQUEST_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0 Safari/537.36"
-    )
-}
 
 MODEL_CONFIGS = {
     "content": {
@@ -72,6 +61,7 @@ COMMON_METADATA_COLUMNS = [
     "genres_comma",
     "avg_rating",
     "rating_count",
+    "poster_url",
     "imdb_url",
     "tmdb_url",
     "movielens_url",
@@ -89,6 +79,41 @@ def table_exists(conn, table_name):
     WHERE type IN ('table', 'view') AND name = ?
     """
     return conn.execute(query, (table_name,)).fetchone() is not None
+
+
+@lru_cache(maxsize=1)
+def metadata_has_enriched_posters():
+    with get_connection() as conn:
+        if not table_exists(conn, "movie_metadata_enriched"):
+            return False
+        cols = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(movie_metadata_enriched)").fetchall()
+        }
+    return "poster_url" in cols
+
+
+def load_movie_metadata(conn):
+    poster_select = "COALESCE(e.poster_url, '') AS poster_url," if metadata_has_enriched_posters() else "'' AS poster_url,"
+    query = f"""
+    SELECT
+        mcc.movieID,
+        mcc.title_clean,
+        mcc.title,
+        mcc.release_year,
+        mcc.genres_comma,
+        mcc.avg_rating,
+        mcc.rating_count,
+        {poster_select}
+        mcc.imdb_url,
+        mcc.tmdb_url,
+        mcc.movielens_url
+    FROM movie_content_clean mcc
+    LEFT JOIN movie_metadata_enriched e
+        ON e.movieID = mcc.movieID
+       AND e.fetch_status = 'ok'
+    """
+    return pd.read_sql_query(query, conn)
 
 
 def fetch_movie_options():
@@ -130,22 +155,27 @@ def fetch_user_interaction_count(conn, user_id):
 
 
 def fetch_top_rated_fallback(conn, user_id, top_n, model_key):
+    poster_select = "COALESCE(e.poster_url, '') AS poster_url," if metadata_has_enriched_posters() else "'' AS poster_url,"
     fallback_df = pd.read_sql_query(
-        """
+        f"""
         SELECT
             ? AS userID,
-            movieID AS recommended_movieID,
-            title_clean AS recommended_title,
-            release_year,
-            genres_comma,
-            avg_rating,
-            rating_count,
-            imdb_url,
-            tmdb_url,
-            movielens_url
-        FROM movie_content_clean
-        WHERE avg_rating IS NOT NULL
-          AND rating_count >= ?
+            mcc.movieID AS recommended_movieID,
+            mcc.title_clean AS recommended_title,
+            mcc.release_year,
+            mcc.genres_comma,
+            mcc.avg_rating,
+            mcc.rating_count,
+            {poster_select}
+            mcc.imdb_url,
+            mcc.tmdb_url,
+            mcc.movielens_url
+        FROM movie_content_clean mcc
+        LEFT JOIN movie_metadata_enriched e
+            ON e.movieID = mcc.movieID
+           AND e.fetch_status = 'ok'
+        WHERE mcc.avg_rating IS NOT NULL
+          AND mcc.rating_count >= ?
         ORDER BY avg_rating DESC, rating_count DESC, title_clean
         LIMIT ?
         """,
@@ -155,11 +185,6 @@ def fetch_top_rated_fallback(conn, user_id, top_n, model_key):
 
     if fallback_df.empty:
         return fallback_df
-
-    fallback_df["poster_url"] = fallback_df.apply(
-        lambda row: fetch_poster_url(row.get("tmdb_url"), row.get("imdb_url")),
-        axis=1,
-    )
 
     rank_column = "final_rank" if model_key == "hybrid" else "recommendation_rank"
     fallback_df[rank_column] = range(1, len(fallback_df) + 1)
@@ -186,34 +211,13 @@ def fetch_recommendations(user_id, model_key, top_n):
         if rec_df.empty:
             return fetch_top_rated_fallback(conn, user_id, top_n, model_key)
 
-        metadata_df = pd.read_sql_query(
-            """
-            SELECT
-                movieID,
-                title_clean,
-                title,
-                release_year,
-                genres_comma,
-                avg_rating,
-                rating_count,
-                imdb_url,
-                tmdb_url,
-                movielens_url
-            FROM movie_content_clean
-            """,
-            conn,
-        )
+        metadata_df = load_movie_metadata(conn)
 
     merged_df = rec_df.merge(
         metadata_df,
         left_on="recommended_movieID",
         right_on="movieID",
         how="left",
-    )
-
-    merged_df["poster_url"] = merged_df.apply(
-        lambda row: fetch_poster_url(row.get("tmdb_url"), row.get("imdb_url")),
-        axis=1,
     )
 
     return merged_df
@@ -237,34 +241,13 @@ def fetch_movie_similarity(movie_id, similarity_key, top_n):
         if sim_df.empty:
             return sim_df
 
-        metadata_df = pd.read_sql_query(
-            """
-            SELECT
-                movieID,
-                title_clean,
-                title,
-                release_year,
-                genres_comma,
-                avg_rating,
-                rating_count,
-                imdb_url,
-                tmdb_url,
-                movielens_url
-            FROM movie_content_clean
-            """,
-            conn,
-        )
+        metadata_df = load_movie_metadata(conn)
 
     merged_df = sim_df.merge(
         metadata_df,
         left_on="similar_movieID",
         right_on="movieID",
         how="left",
-    )
-
-    merged_df["poster_url"] = merged_df.apply(
-        lambda row: fetch_poster_url(row.get("tmdb_url"), row.get("imdb_url")),
-        axis=1,
     )
 
     return merged_df
@@ -297,44 +280,6 @@ def fetch_movie_summary(movie_id):
         "release_year": format_value(row.get("release_year")),
         "genere": format_value(row.get("genres_comma")),
     }
-
-
-@lru_cache(maxsize=512)
-def fetch_poster_url(tmdb_url, imdb_url):
-    for page_url in (tmdb_url, imdb_url):
-        if not page_url:
-            continue
-
-        try:
-            html_text = fetch_page_html(page_url)
-            poster_url = extract_meta_image(html_text)
-            if poster_url:
-                return poster_url
-        except (HTTPError, URLError, TimeoutError, ValueError):
-            continue
-
-    return ""
-
-
-@lru_cache(maxsize=512)
-def fetch_page_html(url):
-    req = Request(url, headers=REQUEST_HEADERS)
-    with urlopen(req, timeout=10) as response:
-        content_type = response.headers.get_content_charset() or "utf-8"
-        return response.read().decode(content_type, errors="ignore")
-
-
-def extract_meta_image(html_text):
-    patterns = [
-        r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
-        r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, html_text, flags=re.IGNORECASE)
-        if match:
-            return html.unescape(match.group(1))
-    return ""
 
 
 def format_value(value):

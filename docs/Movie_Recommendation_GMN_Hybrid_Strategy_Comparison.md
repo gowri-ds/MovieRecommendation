@@ -12,6 +12,12 @@ The current GMN hybrid router uses a weighted combination of:
 - collaborative recommendation score
 - overlap bonus when both models recommend the same movie
 
+The active fixed weights in the final pipeline are:
+
+- content weight = `0.45`
+- collaborative weight = `0.55`
+- overlap bonus = `0.08`
+
 This is a valid and explainable baseline. The question is whether the team wants to keep that approach, refine it, or replace it with a more adaptive or learned strategy.
 
 ## Strategy Comparison

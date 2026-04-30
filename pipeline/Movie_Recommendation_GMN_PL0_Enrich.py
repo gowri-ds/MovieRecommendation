@@ -70,6 +70,7 @@ TOP_CAST_COUNT    = 5          # how many cast members to store
 TOP_KEYWORD_COUNT = 10         # how many keywords to store
 
 TMDB_BASE = "https://api.themoviedb.org/3/movie"
+TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 TIMEOUT   = 10                 # seconds per API request
 
 # Keywords to exclude (format/technical tags, not content)
@@ -93,8 +94,25 @@ def table_exists(conn, name):
 
 
 def already_enriched(conn, movie_id):
+    cols = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(movie_metadata_enriched)").fetchall()
+    }
+    if "poster_url" in cols:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM movie_metadata_enriched
+            WHERE movieID = ?
+              AND fetch_status = 'ok'
+              AND COALESCE(TRIM(poster_url), '') <> ''
+            """,
+            (int(movie_id),)
+        ).fetchone()
+        return row is not None
+
     row = conn.execute(
-        "SELECT 1 FROM movie_metadata_enriched WHERE movieID = ?",
+        "SELECT 1 FROM movie_metadata_enriched WHERE movieID = ? AND fetch_status = 'ok'",
         (int(movie_id),)
     ).fetchone()
     return row is not None
@@ -170,6 +188,8 @@ def fetch_movie_metadata(tmdb_id, api_key):
         return None
 
     overview = clean_text(details.get("overview", ""))
+    poster_path = clean_text(details.get("poster_path", ""))
+    poster_url = f"{TMDB_IMAGE_BASE}{poster_path}" if poster_path else ""
 
     # Keywords
     kw_data  = fetch_tmdb(f"{base}/keywords", params) or {}
@@ -195,6 +215,8 @@ def fetch_movie_metadata(tmdb_id, api_key):
         "keywords"      : " ".join(keywords),
         "cast"          : " ".join(cast_list),
         "director"      : directors[0] if directors else "Unknown",
+        "poster_path"   : poster_path,
+        "poster_url"    : poster_url,
         "keyword_count" : len(keywords),
         "cast_count"    : len(cast_list),
     }
@@ -213,6 +235,8 @@ def create_enrichment_table(conn):
             keywords      TEXT,
             cast          TEXT,
             director      TEXT,
+            poster_path   TEXT,
+            poster_url    TEXT,
             keyword_count INTEGER,
             cast_count    INTEGER,
             fetch_status  TEXT NOT NULL,
@@ -223,6 +247,14 @@ def create_enrichment_table(conn):
         CREATE INDEX IF NOT EXISTS idx_enriched_tmdbid
             ON movie_metadata_enriched(tmdbID);
     """)
+    existing_cols = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(movie_metadata_enriched)").fetchall()
+    }
+    if "poster_path" not in existing_cols:
+        conn.execute("ALTER TABLE movie_metadata_enriched ADD COLUMN poster_path TEXT;")
+    if "poster_url" not in existing_cols:
+        conn.execute("ALTER TABLE movie_metadata_enriched ADD COLUMN poster_url TEXT;")
     conn.commit()
 
 
@@ -250,6 +282,8 @@ def create_enriched_view(conn):
             f.movielens_url,
             f.imdb_url,
             f.tmdb_url,
+            e.poster_path,
+            e.poster_url,
 
             e.overview,
             e.keywords      AS tmdb_keywords,
@@ -350,12 +384,14 @@ def run_enrichment(conn, movies_df, api_key):
             conn.execute("""
                 INSERT OR REPLACE INTO movie_metadata_enriched
                     (movieID, tmdbID, overview, keywords, cast, director,
+                     poster_path, poster_url,
                      keyword_count, cast_count, fetch_status, fetched_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?)
             """, (
                 movie_id, int(tmdb_id),
                 meta["overview"], meta["keywords"],
                 meta["cast"],     meta["director"],
+                meta["poster_path"], meta["poster_url"],
                 meta["keyword_count"], meta["cast_count"],
                 ts,
             ))
@@ -369,8 +405,9 @@ def run_enrichment(conn, movies_df, api_key):
             conn.execute("""
                 INSERT OR REPLACE INTO movie_metadata_enriched
                     (movieID, tmdbID, overview, keywords, cast, director,
+                     poster_path, poster_url,
                      keyword_count, cast_count, fetch_status, fetched_at)
-                VALUES (?, ?, '', '', '', 'Unknown', 0, 0, 'failed', ?)
+                VALUES (?, ?, '', '', '', 'Unknown', '', '', 0, 0, 'failed', ?)
             """, (movie_id, int(tmdb_id), ts))
             failed += 1
 
