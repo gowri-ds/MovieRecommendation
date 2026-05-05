@@ -161,7 +161,7 @@ SELECT
     h.final_rank,
     h.recommended_movieID,
     h.recommended_title,
-    m.genres,
+    m.genres_comma,
     m.avg_rating,
     m.rating_count,
     h.model_source,
@@ -189,3 +189,77 @@ LEFT JOIN (
     ON u.userID = h.userID
 WHERE h.userID IS NULL
 ORDER BY u.userID;
+
+
+/*
+Query 13: Ten random users and all of their hybrid recommendations
+*/
+WITH random_users AS (
+    SELECT DISTINCT userID
+    FROM user_hybrid_recommendations_top20
+    ORDER BY RANDOM()
+    LIMIT 10
+)
+SELECT
+    h.userID,
+    h.final_rank,
+    h.recommended_movieID,
+    h.recommended_title,
+    ROUND(h.content_score, 4) AS content_score,
+    ROUND(h.collaborative_score, 4) AS collaborative_score,
+    h.recommended_by_both,
+    h.model_source,
+    ROUND(h.final_score, 4) AS final_score
+FROM user_hybrid_recommendations_top20 h
+INNER JOIN random_users r
+    ON h.userID = r.userID
+ORDER BY h.userID, h.final_rank;
+
+
+/*
+Query 14: Ten random users and hybrid recommendations with movie metadata
+*/
+WITH random_users AS (
+    SELECT DISTINCT userID
+    FROM user_hybrid_recommendations_top20
+    ORDER BY RANDOM()
+    LIMIT 10
+)
+SELECT
+    h.userID,
+    h.final_rank,
+    h.recommended_movieID,
+    h.recommended_title,
+    m.genres_comma,
+    ROUND(m.avg_rating, 2) AS avg_rating,
+    m.rating_count,
+    h.model_source,
+    ROUND(h.final_score, 4) AS final_score
+FROM user_hybrid_recommendations_top20 h
+INNER JOIN random_users r
+    ON h.userID = r.userID
+LEFT JOIN movie_content_clean m
+    ON h.recommended_movieID = m.movieID
+ORDER BY h.userID, h.final_rank;
+
+
+/*
+Query 15: Top 1 hybrid recommendation for ten random users
+*/
+WITH random_users AS (
+    SELECT DISTINCT userID
+    FROM user_hybrid_recommendations_top20
+    ORDER BY RANDOM()
+    LIMIT 10
+)
+SELECT
+    h.userID,
+    h.recommended_movieID,
+    h.recommended_title,
+    h.model_source,
+    ROUND(h.final_score, 4) AS final_score
+FROM user_hybrid_recommendations_top20 h
+INNER JOIN random_users r
+    ON h.userID = r.userID
+WHERE h.final_rank = 1
+ORDER BY h.userID;
